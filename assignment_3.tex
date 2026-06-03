@@ -213,7 +213,11 @@ while(1) {
 \subsubsection{Ergebnisse}
 Nach einer Anzahl von \textbf{8192} Einträgen in einer Pipe beendet die DOCA Flow runtime mit einem Fehler. Dazu sei erwähnt, dass die Runtime bereits nach dem hinzufügen abstürzt, also insbesondere vor dem eigentlichen Prozessaufruf.
 \subsection{hash\_pipe}
-Die Hash Pipe ist eine der größten Neuerungen und somit auch ein Kernarbeitsziel dieses Projekts gewesen. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie es, einen implizit ausgeführten Hashing Algorithmus auf die Netzwerkpakete anzuwenden. Somit werden die Pakete gleichmäßig auf die entsprechenden Entries verteilt. Außerdem wurde in diesem Zuge auch die Möglichkeit implementiert, dynamisch zur Laufzeit Backends hinzuzufügen und zu löschen. Dadurch ist eine genauere Anpassung des Loadbalancers in einer realen Einsatzsituation möglich, da bisher eine Änderung der Backends einen Neustart des Programms erfordern würde. Da dies mit entsprechendem Paketverlust einhergehen würde, war dieses Feature zu beginn des Praktikums im Fokus. Die Backends werden mittels einer REST-API auf dem Port 8080 hinzugefügt. Es kann mit jedem API-Call jeweils eine gerade Anzahl von Backends hinzugefügt werden, sodass die neue Anzahl an Backends wieder einer 2er Potenz ergibt. Im folgenden Code ist die entsprechende Funktion zum dynamischen hinzufügen eines Backends gegeben. Es sei dazu erwähnt, dass es sich um eine stark gekürzte Variante handelt. Die vollständige Version ist im Projekt Github-Repository einzusehen.
+Die Hash Pipe ist eine der größten Neuerungen und somit auch ein Kernarbeitsziele dieses Projekts gewesen. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie es, einen implizit ausgeführten Hashing Algorithmus auf die Netzwerkpakete anzuwenden. Somit werden die Pakete gleichmäßig auf die entsprechenden Entries verteilt. Außerdem wurde in diesem Zuge auch die Möglichkeit implementiert, dynamisch zur Laufzeit Backends hinzuzufügen und zu löschen. Dadurch ist eine genauere Anpassung des Loadbalancers in einer realen Einsatzsituation möglich, da bisher eine Änderung der Backends einen Neustart des Programms erfordern würde. Da dies mit entsprechendem Paketverlust einhergehen würde, war dieses Feature zu beginn des Praktikums im Fokus. Die Backends werden mittels einer REST-API auf dem Port 8080 hinzugefügt. Es kann mit jedem API-Call jeweils eine gerade Anzahl von Backends hinzugefügt werden, sodass die neue Anzahl an Backends wieder einer 2er Potenz entspricht. Im folgenden Code ist die entsprechende Funktion zum dynamischen hinzufügen eines Backends gegeben. Es sei dazu erwähnt, dass es sich um eine stark gekürzte Variante handelt. Die vollständige Version ist im Projekt Github-Repository einzusehen. Die entscheidenden aufgerufenen intrinsischen Funktionen sind hierbei:
+\begin{itemize}
+    \item \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zum Erstellen des Entry
+    \item \texttt{doca\_flow\_entries\_process()} ruft Prozessierung in der Runtime auf
+\end{itemize}
 \begin{minted}{c}
 doca_error_t xenoflow_add_backend(XenoFlow *xeno, char *name, char *mac) {
 	int entry_index = xeno->config->numBackends;
@@ -233,12 +237,9 @@ doca_error_t xenoflow_add_backend(XenoFlow *xeno, char *name, char *mac) {
 	fwd.type = DOCA_FLOW_FWD_PORT;
 	fwd.port_id = 0;
 
-	result = doca_flow_pipe_hash_add_entry(/* Entry Argumente */);
+        doca_flow_pipe_hash_add_entry(/* Entry Argumente */);
+        doca_flow_entries_process(/* Entry Process Argumente */);
 
-	result = doca_flow_entries_process(
-            xeno->ports[0], 0, DEFAULT_TIMEOUT_US, 1
-        );
-    
 	configAddBackend(xeno->config, new_backend);
 }
 \end{minted}
@@ -309,7 +310,7 @@ Aktuell ist es Trend, Metriken statt wie früher üblich über eine Kommandozeil
     \label{fig:placeholder}
 \end{figure}
 \section{Fazit}
-Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Prototypen ein gutes Stück weiter in die Richtung eines vollständigen Releases gebracht.
+Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Prototypen ein gutes Stück weiter in die Richtung eines vollständigen Releases gebracht. Es konnten Erweiterungen für einen weiter ausgebauten, produktionsreifen Loadbalancer implementiert werden. So ist es nun in der Version 1.0 möglich, dynamisch zur Laufzeit neue Backends hinzuzufügen, die dann im Anschluss aktiv werden. Außerdem wurde der allgemeine Code wesentlich eingekürzt, da nun statt einer Filterfunktion und der entsprechenden Maskenberechnung einfach die DOCA Flow intrinsische Funktion aufgerufen wird. Dadurch ist keine Laufzeitsteigerung messbar, womit es sich um eine zero-cost-Erweiterung handelt. Damit ist nun das Projekt XenoFlow weitestgehend beendet. XenoFlow verbleibt als dynamisch konfigurierbarer L3 Loadbalancer. Es muss beim hinzufügen von Backends beachtet werden, dass stateful-TCP-Verbindungen korrekt wiederhergestellt werden müssen. Dies liegt dann allerdings nicht mehr in der obhut des Loadbalancers, sondern muss auf Applikationsebene gelöst werden. 
 \section{Ausblick}
 \begin{figure}
     \centering
@@ -317,7 +318,7 @@ Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Pro
     \caption{Bucket Semantik des Katran Loadbalancers}
     \label{fig:placeholder}
 \end{figure}
-Hierzu sei erwähnt, dass zum jetzigen Zeitpunkt noch keine Bucket Semantik wie aus dem Katran Load Balancer von Facebook implementiert wurde. Die Idee ist es, zu ermöglichen, dass eine Anzahl von Backends, die nicht einer Zweierpotenz entspricht, abgebildet werden kann. Dabei wird, anstatt dass jedes Entry direkt auf ein Backend zeigt, eine feste Anzahl von Entries erstellt (Buckets). Die eigentliche Zuordnung, welches Bucket auf welches Backend zeigt, bleibt dann dem Programm überlassen. DIes ermöglicht es beispielsweise, einen 8 Bucket Zustand auch mit 3 Backends zu unterstützen.
+Das wohl größte fehlende Feature für XenoFlow wäre eine Per-Connection-Consistency. Dazu wäre es möglich, die Bucket Semantik von Katran nach zu implementieren. Die Idee ist es, zu ermöglichen, dass eine Anzahl von Backends, die nicht einer Zweierpotenz entspricht, abgebildet werden kann. Dabei wird, anstatt dass jedes Entry direkt auf ein Backend zeigt, eine feste Anzahl von Entries erstellt (Buckets). Die eigentliche Zuordnung, welches Bucket auf welches Backend zeigt, bleibt dann dem Programm überlassen. Dies ermöglicht es beispielsweise, einen 8 Bucket Zustand auch mit 3 Backends zu unterstützen (siehe Abbildung 7.1). Entscheidend sind jetzt hierbei die Backends, die noch eine laufende Stateful Verbindung mit einem Client geöffnet hatten. Dieser Traffic würde nach dem hinzufügen eines neuen Backends nicht mehr bei dem ursprünglichen Backend ankommen, da die entsprechenden Entries ja nun auf ein anderes Backend zeigen. Ein möglicher Weg, dies zu umgehen, wäre, den Traffic vorerst auf einen der ARM-Kerne mittels eines Forwarding an das RSS-Target zu schicken. Auf dem ARM Host werden dann entsprechend die laufenden Verbindungen explizit behandelt und mitgeschnitten. Nach einer gewissen Zeit wird ein Cut gemacht und die expliziten Verbindungen werden in einer Exception Pipe als expliziter Match hinzugefügt. Alle neuen Verbindungen werden von dieser Behandlung ausgenommen und werden direkt als klassische Verbindung gehandhabt. Wichtig ist, dass der besagte Prozess abgeschlossen werden muss, bevor neue Backends hinzugefügt werden können. Einen ähnlichen Ansatz verfolgen wir im kommenden VeloxFlow. Dieser beschreibt einen Loadbalancer, der die QUIC Semantik unterstützt und zusätzlich die PCC für TCP implementieren soll.
 
 
 

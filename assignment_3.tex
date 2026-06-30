@@ -335,6 +335,14 @@ while(1) {
     doca_flow_entries_process(/* Entry Process Parameter */);
 }
 \end{minted}
+In Zeile 3 wird eine zufällige Backoff-Zeit errechnet, die, wie vorher beschrieben, die Messung mit deutlich niedrigeren Datenraten ermöglicht und anschließend in Zeile 13 angewendet wird. Ansonsten kommt das Experiment mit den hier zuvor eingeführten Funktionen aus.  \begin{minted}[linenos]{c}
+doca_error_t doca_flow_pipe_remove_entry(
+    uint16_t pipe_queue, 
+    uint32_t flags, 
+    struct doca_flow_pipe_entry *entry
+);
+\end{minted}
+Die \texttt{doca\_flow\_remove\_entry()} ist allerdings neu und erlaubt unter der Angabe der Pipe-Queue und des Entry auch analog zum Hinzufügen das Löschen eines Entries aus einer Pipe.
 \subsubsection*{Ergebnisse}
 \begin{figure}
     \centering
@@ -343,14 +351,14 @@ while(1) {
     \label{fig:placeholder}
 \end{figure}
 % Cite einfügen und begründen das größenordnung stimmt und angeben dass es eine BLueField 2 war.
-Wie in der Abbildung 4.2 zu sehen ist, liegen die meisten Werte zwischen 150 und 250 $\mu s$. Der errechnete Median liegt bei \textbf{$249.8 \mu s$}. Die ausreißenden Minimalwerte sind wahrscheinlich dem Jitter der Hardware-Uhr auf Seiten der BlueField aufgrund der relativen Menge der Ausreißer zuzuordnen. Die hohen Maximalwerte können vernachlässigt werden, da sie durch den zufälligen Delay zustande kommen. Grundsätzlich wurde diesen gemessenen Werten innerhalb der Arbeitsgruppe glauben geschenkt, da sie sich mit der Veröffentlichung der Laconic-Gruppe deckten. Diese ermittelten einen Wert von $302 \mu s$.
+Wie in der Abbildung 4.2 zu sehen ist, liegen die meisten Werte zwischen 150 und 250 $\mu s$. Der errechnete Median liegt bei \textbf{$249.8 \mu s$}. Die ausreißenden Minimalwerte sind wahrscheinlich dem Jitter der Hardware-Uhr auf Seiten der BlueField aufgrund der relativ kleinen Anzahl der Ausreißer zuzuordnen. Die hohen Maximalwerte können vernachlässigt werden, da sie durch den zufälligen Delay zustande kommen. Grundsätzlich wurde diesen gemessenen Werten innerhalb der Arbeitsgruppe glauben geschenkt, da sie sich mit der Veröffentlichung der Laconic-Gruppe deckten beziehungsweise in derselben Größenordnung lagen. Die Laconic-Arbeitsgruppe ermittelte einen Wert von $302 \mu s$ \cite{cui2024laconic}. Es sei allerdings erwähnt, dass sie einerseits auf der Bluefield-2 gemessen haben und andererseits bei dem Median aus diesem Projekt hier die Netzwerklatenz nicht abgezogen bzw. berücksichtigt wurde.
 \section{Neuerungen in XenoFlow 1.0}
 %\subsection{hash\_pipe}
 % Siehe Doku einfügen
 Die Hash Pipe ist eine der größten Neuerungen und somit auch eines der Kernarbeitsziele dieses Projekts gewesen. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie es, einen implizit ausgeführten Hashing Algorithmus auf die Netzwerkpakete anzuwenden. Somit werden die Pakete gleichmäßig auf die entsprechenden Entries verteilt. Außerdem wurde in diesem Zug auch die Möglichkeit implementiert, dynamisch zur Laufzeit Backends hinzuzufügen und zu löschen. Dadurch ist eine genauere Anpassung des Loadbalancers in einer realen Einsatzsituation möglich, da bisher eine Änderung der Backends einen Neustart des Programms erfordern würde. Da dies mit entsprechendem Paketverlust einhergehen würde, war dieses Feature zu beginn des Praktikums im Fokus. Die Backends werden mittels einer REST-API auf dem Port 8080 hinzugefügt. Es kann mit jedem API-Call jeweils eine gerade Anzahl von Backends hinzugefügt werden, sodass die neue Anzahl an Backends wieder einer 2er Potenz entspricht. Im folgenden Code ist die entsprechende Funktion zum dynamischen hinzufügen eines Backends gegeben. Es sei dazu erwähnt, dass es sich um eine stark gekürzte Variante handelt. Die vollständige Version ist im Projekt Github-Repository einzusehen. Die entscheidenden aufgerufenen intrinsischen Funktionen sind hierbei:
 \begin{itemize}
     \item \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zum Erstellen des Entry, explizit in einer Hash-Pipe.
-    \item \texttt{doca\_flow\_entries\_process()} ruft Prozessierung in der Runtime auf (siehe 4.3).
+    \item \texttt{doca\_flow\_entries\_process()} ruft die Prozessierung in der Runtime auf (siehe 4.3).
 \end{itemize}
 \begin{minted}[linenos]{c}
 doca_error_t xenoflow_add_backend(XenoFlow *xeno, char *name, char *mac) {
@@ -392,7 +400,6 @@ import time
 pyd = pydflow.PyDFlow("test", "03:00.0", "03:00.1")
 pipe = pyd.create_pipe()
 pipe.create_entry()
-pipe.create_entry()
 
 print(len(pipe.get_entries()))
 print(pipe.get_entries())
@@ -420,7 +427,7 @@ Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Pro
 % Besser erklären wie Bucket und Backend Mappen vor allem im Bezug auf 7.1
 % RSS Target einführen und Forwarding auf Flow beziehen
 % Maglev einführen um auf Bucket hashing einzugehen
-Das wohl größte fehlende Feature für XenoFlow wäre eine Per-Connection-Consistency. Dazu wäre es möglich, die Bucket Semantik von Katran nach zu implementieren. Die Idee ist es, zu ermöglichen, dass eine Anzahl von Backends, die nicht einer Zweierpotenz entspricht, abgebildet werden kann. Dabei wird, anstatt dass jedes Entry direkt auf ein Backend zeigt, eine feste Anzahl von Entries erstellt (Buckets). Die eigentliche Zuordnung, welches Bucket auf welches Backend zeigt, bleibt dann dem Programm überlassen. Dies ermöglicht es beispielsweise, einen 8 Bucket Zustand auch mit 3 Backends zu unterstützen (siehe Abbildung 7.1). Entscheidend sind jetzt hierbei die Backends, die noch eine laufende Stateful Verbindung mit einem Client geöffnet hatten. Dieser Traffic würde nach dem hinzufügen eines neuen Backends nicht mehr bei dem ursprünglichen Backend ankommen, da die entsprechenden Entries ja nun auf ein anderes Backend zeigen. Ein möglicher Weg, dies zu umgehen, wäre, den Traffic vorerst auf einen der ARM-Kerne mittels eines Forwarding an das RSS-Target zu schicken. Auf dem ARM Host werden dann entsprechend die laufenden Verbindungen explizit behandelt und mitgeschnitten. Nach einer gewissen Zeit wird ein Cut gemacht und die expliziten Verbindungen werden in einer Exception Pipe als expliziter Match hinzugefügt. Alle neuen Verbindungen werden von dieser Behandlung ausgenommen und werden direkt als klassische Verbindung gehandhabt. Wichtig ist, dass der besagte Prozess abgeschlossen werden muss, bevor neue Backends hinzugefügt werden können. Einen ähnlichen Ansatz verfolgen wir im kommenden VeloxFlow \cite{schnoer2026veloxflow}. Dieser beschreibt einen Loadbalancer, der die QUIC Semantik unterstützt und zusätzlich die PCC für TCP implementieren soll.
+Das wohl größte fehlende Feature für XenoFlow wäre eine Per-Connection-Consistency. Dazu wäre es möglich, die Bucket Semantik von Katran nachzimplementieren. Die Idee ist es, zu ermöglichen, dass eine Anzahl von Backends, die nicht einer Zweierpotenz entspricht, abgebildet werden kann. Dabei wird, anstatt dass jedes Entry direkt auf ein Backend zeigt, eine feste Anzahl von Entries erstellt (Buckets). Die eigentliche Zuordnung, welches Bucket auf welches Backend zeigt, bleibt dann dem Programm überlassen. Dies ermöglicht es beispielsweise, einen 8 Bucket Zustand auch mit 3 Backends zu unterstützen (siehe Abbildung 7.1). Entscheidend sind jetzt hierbei die Backends, die noch eine laufende Stateful Verbindung mit einem Client geöffnet hatten. Dieser Traffic würde nach dem hinzufügen eines neuen Backends nicht mehr beim ursprünglichen Backend ankommen, da die entsprechenden Entries ja nun auf ein anderes Backend zeigen. Ein möglicher Weg, dies zu umgehen, wäre, den Traffic vorerst auf einen der ARM-Kerne mittels eines Forwarding an das RSS-Target zu schicken. Auf dem ARM Host werden dann entsprechend die laufenden Verbindungen explizit behandelt und mitgeschnitten. Nach einer gewissen Zeit wird ein Cut gemacht und die expliziten Verbindungen werden in einer Exception Pipe als expliziter Match hinzugefügt. Alle neuen Verbindungen werden von dieser Behandlung ausgenommen und werden direkt als klassische Verbindungen gehandhabt. Wichtig ist, dass der besagte Prozess abgeschlossen werden muss, bevor neue Backends hinzugefügt werden können. Einen ähnlichen Ansatz verfolgen wir im kommenden VeloxFlow \cite{schnoer2026veloxflow}. Dieser beschreibt einen Loadbalancer, der die QUIC Semantik unterstützt und zusätzlich die PCC für TCP implementieren soll.
 
 
 \newpage

@@ -64,15 +64,19 @@
 \section{Einleitung}
 % Allgemeiner und den Leser besser abholen. Was haben wir vor und was sind die Randbedingungen
 % Alle Quellen des Projektes findet man...
-Das Problem der Lastverteilung stellt eines der fundamentalsten in der Informatik dar. Viele Strategien und Ansätze prägen dabei die Landschaft der Implementierungen und variieren teils stark im jeweiligen Energieverbrauch. Seit geraumer Zeit begegnen Hersteller solchen Problemen mit technischen und architektonischen Lösungen. So entwickelt sich der Trend hin zu einer heterogenen Compute Landschaft. Die hier vorliegende Arbeit beschäftigt sich mit der Klasse der SmartNICs, im speziellen der BlueField-3 von Nvidia \cite{nvidia_bluefield_dpu}. 
+Das Problem der Lastverteilung stellt eines der fundamentalsten Probleme der Informatik dar. Zahlreiche Strategien und Ansätze prägen die Landschaft entsprechender Implementierungen und unterscheiden sich teilweise erheblich hinsichtlich ihres Energieverbrauchs. Seit geraumer Zeit begegnen Hersteller diesen Herausforderungen mit technischen und architektonischen Lösungen. Dabei zeichnet sich zunehmend ein Trend hin zu heterogenen Compute-Landschaften ab. Die vorliegende Arbeit beschäftigt sich mit der Klasse der SmartNICs, insbesondere mit der BlueField-3 von Nvidia \cite{nvidia_bluefield_dpu}.
 
-Es werden technische Limitierungen anhand von Experimenten untersucht sowie ein gewisser Anteil an reverse Engineering betrieben, um Licht auf die Architektur zu werfen. Diese wird leider seitens Nvidia als proprietär betrachtet und dementsprechend nicht veröffentlicht. Außerdem wird die Flow API aus dem DOCA Framework verwendet, um die speziellen Hardwarebeschleuniger zu programmieren, die den eigentlichen energetisch Effizienten Vorteil bringen. Diese Arbeit versucht also ebenfalls, ein Verständnis für die API zu schaffen, um auch andere Probleme mittels DOCA Flow implementieren zu können. 
+Anhand verschiedener Experimente werden technische Limitationen untersucht. Darüber hinaus wird in Teilen Reverse Engineering betrieben, um Erkenntnisse über die Architektur der BlueField-3 zu gewinnen. Da Nvidia diese Architektur als proprietär betrachtet, sind entsprechende Informationen öffentlich nur eingeschränkt verfügbar. Zusätzlich wird die Flow API des DOCA-Frameworks verwendet, um die spezialisierten Hardwarebeschleuniger zu programmieren, welche den eigentlichen energetischen Effizienzvorteil ermöglichen. Die Arbeit verfolgt daher zugleich das Ziel, ein fundiertes Verständnis der DOCA Flow API zu schaffen, sodass sich auch weitere Problemstellungen mithilfe von DOCA Flow implementieren lassen.
 
-Ziel ist es, die technischen Limitationen, die so nicht im Material seitens des Herstellers genannt werden, zu ermitteln. Zentral wird im Rahmen dieser Projektarbeit der XenoFlow Loadbalancer vom ursprünglichen Zustand (Version 0.1), der in der Bachelorarbeit \cite{heimbrodt2025bluefield} entstanden ist, auf eine vollständige Major-Release Version 1.0 angehoben. Die ursprüngliche Version von XenoFlows wurde mittels DOCA Flow auf der Bluefield-3 implementiert, weshalb auch in dieser Arbeit auf derselben Plattform gearbeitet wurde. Alle Quellen des Projekts sind auf Github unter \url{https://github.com/gespel/XenoFlow} abgelegt.
+Ziel der Arbeit ist es, technische Limitationen zu identifizieren, die in der Dokumentation des Herstellers nicht beschrieben werden. Im Rahmen dieser Projektarbeit wird der XenoFlow-Loadbalancer ausgehend vom ursprünglichen Entwicklungsstand (Version~0.1), der im Rahmen der Bachelorarbeit \cite{heimbrodt2025bluefield} entstanden ist, zu einer vollständigen Major-Release-Version~1.0 weiterentwickelt. Die ursprüngliche Version von XenoFlow wurde mithilfe von DOCA Flow auf der BlueField-3 implementiert, weshalb auch diese Arbeit auf derselben Plattform aufbaut. Der vollständige Quellcode des Projekts ist auf GitHub unter \url{https://github.com/gespel/XenoFlow} verfügbar.
 \section{BlueField Architektur}
-Bei der Bluefield-3 handelt es sich um eine Netzwerkkarte der Klasse der SmartNICs. Diese zeichnen sich dadurch aus, dass neben den Komponenten einer konventionellen Netzwerkkarte zusätzliche, herstellerseitig integrierte Hardwarebeschleuniger bereitgestellt werden. Außerdem wird im Falle der BlueField noch ein komplett eigener ARM-Host verbaut, der es ermöglicht, Anwendungen vollständig vom eigentlichen Host, in dem die BlueField verbaut ist, gekapselt auszuführen. 
+Bei der BlueField-3 handelt es sich um eine Netzwerkkarte der Klasse der SmartNICs. Diese zeichnen sich dadurch aus, dass sie neben den Komponenten einer konventionellen Netzwerkkarte zusätzliche, herstellerseitig integrierte Hardwarebeschleuniger bereitstellen. Darüber hinaus verfügt die BlueField-3 über einen eigenen ARM-Host, der es ermöglicht, Anwendungen vollständig vom eigentlichen Hostsystem, in dem die Netzwerkkarte verbaut ist, isoliert auszuführen.
 
-Diese Beschleuniger decken unterschiedliche Funktionen ab und sind selbst keine klassischen Prozessoren, sondern entweder Application-Specific Circuits (ASICs) oder Field-Pro-gram-mable-Gate-Arrays (FPGAs). Der Vorteil solcher spezialisierter Hardware ist einerseits die enorm bessere Energieeffizienz und andererseits die daraus resultierenden Geschwindigkeitsgewinne. Das wird bei SmartNICs besonders offensichtlich, da es sich um eine sehr hochfrequente Verarbeitungspipeline handelt. Daher ist jegliche Verarbeitung von Daten auf Seiten der Netzwerkkarte verpflichtet, sämtliche Operationen derart zu modellieren, dass die Latenz in einem möglichst kleinen Umfang bleibt. Entscheidend ist es bei solchen Operationen, die absolute Anzahl an Taktzyklen möglichst gering zu halten oder sogar im optimalen Fall vollständig zu umgehen. Dabei setzen ASICs und FPGAs vor allem auf ihre großen Datenbusse, die dazu genutzt werden können, das Paket vollständig auf einen Datenpfad zu legen und entsprechend zu verarbeiten. Es wird dazu die Eigenschaft von klassischen Netzwerkpaketen ausgenutzt, dass Pakete meist an erwartbaren Bitpositionen die jeweiligen Informationen codieren. Eine weitere wichtige Unterscheidung, die für die späteren Experimente relevant ist, sind die beiden Datenpfadklassen \textbf{On-Path} und \textbf{Off-Path}. On-Path bedeutet im wesentlichen, dass alle zugehörigen Beschleuniger und Komponenten gezwungenermaßen immer an der Verarbeitung beteiligt sind. Im Umkehrschluss bedeutet dies allerdings auch, dass die Performance der On-Path-Komponenten direkten Einfluss auf die Datenrate hat. Off-Path-Komponenten hingegen können bei Bedarf in den kritischen Datenpfad integriert werden, um beispielsweise zusätzliche Funktionalität zu gewährleisten, wie das Parsen von bestimmten anderen Bitpositionen innerhalb des Pakets. Der besagte On-Path, also der kritische Datenpfad, ist in Abbildung 2.1 auf der rechten Seite über den Netzwerk Ein- und -Ausgang zu erkennen. Die entsprechenden Off-Path-Komponenten sind auf der linken Seite zu sehen und sind mittels PCIe Switch mit dem entsprechenden ARM-Host verbunden.
+Die Hardwarebeschleuniger decken unterschiedliche Funktionen ab und sind keine klassischen Prozessoren, sondern bestehen aus Application-Specific Integrated Circuits (ASICs) oder Field-Programmable Gate Arrays (FPGAs). Der Vorteil dieser spezialisierten Hardware liegt einerseits in ihrer deutlich höheren Energieeffizienz und andererseits in den daraus resultierenden Leistungsgewinnen. Dies wird insbesondere bei SmartNICs deutlich, da sie Teil einer hochfrequenten Verarbeitungspipeline sind. Daher muss jede Verarbeitung auf der Netzwerkkarte so modelliert werden, dass die zusätzliche Latenz möglichst gering ausfällt. Entscheidend ist dabei, die Anzahl der benötigten Taktzyklen möglichst klein zu halten oder die Ausführung bestimmter Operationen im Idealfall vollständig zu vermeiden.
+
+ASICs und FPGAs erreichen diese Effizienz insbesondere durch ihre breiten Datenbusse. Dadurch kann ein vollständiges Netzwerkpaket auf einem Datenpfad verarbeitet werden, ohne dass aufwändige Zwischenschritte erforderlich sind. Hierbei wird ausgenutzt, dass Informationen innerhalb klassischer Netzwerkpakete an definierten und vorhersehbaren Bitpositionen codiert sind.
+
+Eine weitere für die späteren Experimente relevante Unterscheidung betrifft die beiden Datenpfadklassen \textbf{On-Path} und \textbf{Off-Path}. Als \textbf{On-Path} werden alle Komponenten bezeichnet, die zwangsläufig an der Verarbeitung jedes Pakets beteiligt sind. Daraus folgt unmittelbar, dass ihre Leistungsfähigkeit direkten Einfluss auf den maximal erreichbaren Datendurchsatz besitzt. \textbf{Off-Path}-Komponenten hingegen werden nur bei Bedarf in den kritischen Datenpfad eingebunden, um zusätzliche Funktionalitäten bereitzustellen, beispielsweise das Parsen weiterer Bitfelder innerhalb eines Pakets. Der kritische Datenpfad (\textbf{On-Path}) ist in Abbildung~2.1 auf der rechten Seite anhand des Netzwerk-Ein- und -Ausgangs dargestellt. Die zugehörigen \textbf{Off-Path}-Komponenten befinden sich auf der linken Seite und sind über einen PCIe-Switch mit dem ARM-Host verbunden.
 % neuere Version der Grafik
 \begin{figure}
     \centering
@@ -81,7 +85,11 @@ Diese Beschleuniger decken unterschiedliche Funktionen ab und sind selbst keine 
     \label{fig:placeholder}
 \end{figure}
 \subsection{DOCA Flow}
-Nvidia gibt der Kundschaft mit DOCA ein sehr mächtiges Werkzeug an die Hand, um selbst Anwendungen für die BlueField- sowie die ConnectX-Plattform zu entwickeln. Dabei bildet DOCA selbst einen Überbegriff für eine Menge von speziellen Bibliotheken, welche alle meist ein oder mehrere Funktionen eines Hardwarebeschleunigers abdecken. Für diese Projektarbeit ist das sogenannte \textbf{DOCA Flow} Framework verwendet worden. Es erlaubt die direkte Programmierung des \textbf{eSwitch} , welcher, wie in Abbildung 2.1 zu sehen, die erste und in speziellen Fällen auch die einzige ausgeführte Hardwareeinheit ist. DOCA Flow kann aus den üblichen Paketquellen des jeweiligen Linux Betriebssystems installiert werden und besteht aus offenen sowie teils kommentierten C-Header-Files mit vorkompilierten Shared-Object-Bibliotheken. Nvidia bietet außerdem eine Dokumentation sowie eine Reihe von Beispielen an, die entsprechend der Problemstellung als Implementierung vorliegen. Diese \textbf{Samples} werden ebenfalls mit DOCA Flow mitinstalliert.
+Nvidia stellt mit DOCA ein leistungsfähiges Software Development Kit (SDK) zur Verfügung, das die Entwicklung eigener Anwendungen für die BlueField- und ConnectX-Plattformen ermöglicht. DOCA dient dabei als Oberbegriff für eine Vielzahl spezialisierter Bibliotheken, die jeweils eine oder mehrere Funktionen der verfügbaren Hardwarebeschleuniger abstrahieren.
+
+Im Rahmen dieser Projektarbeit wird das Framework \textbf{DOCA Flow} verwendet. Es ermöglicht die direkte Programmierung des \textbf{eSwitch}, welcher – wie in Abbildung~2.1 dargestellt – die erste und in bestimmten Anwendungsfällen auch die einzige ausgeführte Hardwareeinheit innerhalb des Datenpfads ist.
+
+DOCA Flow kann über die Paketquellen der jeweiligen Linux-Distribution installiert werden. Es besteht aus öffentlich verfügbaren, teilweise kommentierten C-Header-Dateien sowie vorkompilierten Shared-Object-Bibliotheken. Darüber hinaus stellt Nvidia eine umfangreiche Dokumentation sowie eine Reihe von Beispielimplementierungen (\textbf{Samples}) bereit, die gemeinsam mit DOCA Flow installiert werden und als Referenz für typische Anwendungsfälle dienen.
 \subsubsection{Pipes und Entries}
 \begin{figure}
     \centering
@@ -89,13 +97,20 @@ Nvidia gibt der Kundschaft mit DOCA ein sehr mächtiges Werkzeug an die Hand, um
     \caption{Pipe Verschachtelung \cite{nvidia_doca_flow_architecture}}
     \label{fig:placeholder}
 \end{figure}
-Die zwei grundlegendsten Konzepte von DOCA Flows sind die der sogenannten \textbf{Pipes} und \textbf{Entries} \cite{nvidia_doca_flow_create_pipe_entry}. Diese beiden bilden zusammen den Kern der Funktionalität von DOCA Flow und erlauben neben den interessanten Paketmodifikationen (\textit{Actions}) auch weitere Features wie beispielsweise \textit{Matching}, \textit{Monitoring} und \textit{Forwarding}. Matching definiert zunächst anhand einer genauen Bitfelddefinition, welche Pakete explizit oder implizit aus dem Datenverkehr der Netzwerkkarte herausgenommen werden sollen und im weiteren Verlauf verarbeitet werden können. Das Monitoring erlaubt uns hierbei, ohne weiteren Overhead die Menge sowie die Größe des entsprechenden Netzwerkverkehrs zur Laufzeit beobachten zu können. Daraufhin werden die eigentlichen Actions ausgeführt, die es nun erlauben, Bitfelder auf L2, L3 und L4 des Pakets zu ändern. Abschließend wird mittels der Forwardingdefinition angegeben, an welches Ziel das verarbeitete Paket final weitergeleitet werden soll. Als Ziel können neben dem Hardware-Port auch Pipes oder sogar der ARM-Host angegeben werden. Die genannten Komponenten befinden sich allgemein in einer Pipe. Diese stellt eine Art Template dar, mit dem dann in den Entries die eigentlichen Implementierungen der genannten vier Bereiche zu finden sind. Entries werden einer entsprechenden Pipe zugeordnet und können nur solche Bitfelder beeinflussen, die als Template innerhalb der Pipe aktiviert wurden. Durch das Verketten von Pipes können hochkomplexe Anwendungen implementiert werden (siehe Abbildung 2.2).
+Die beiden grundlegenden Konzepte von DOCA Flow sind sogenannte \textbf{Pipes} und \textbf{Entries} \cite{nvidia_doca_flow_create_pipe_entry}. Gemeinsam bilden sie den Kern der Funktionalität von DOCA Flow und ermöglichen neben Paketmodifikationen (\textit{Actions}) auch weitere Funktionen wie \textit{Matching}, \textit{Monitoring} und \textit{Forwarding}.
 
+Das \textit{Matching} definiert anhand einer Bitfeldbeschreibung, welche Pakete explizit oder implizit aus dem Datenstrom ausgewählt und anschließend weiterverarbeitet werden. Das \textit{Monitoring} ermöglicht es, die Anzahl sowie das Datenvolumen des entsprechenden Netzwerkverkehrs zur Laufzeit ohne zusätzlichen Overhead zu erfassen. Anschließend werden die eigentlichen \textit{Actions} ausgeführt, die Änderungen an Bitfeldern der Schichten L2, L3 und L4 des Netzwerkpakets erlauben. Abschließend legt das \textit{Forwarding} fest, an welches Ziel das verarbeitete Paket weitergeleitet wird. Als Ziel können neben einem Hardware-Port auch andere Pipes oder der ARM-Host angegeben werden.
+
+Die genannten Komponenten sind innerhalb einer Pipe zusammengefasst. Eine Pipe dient dabei als Vorlage (\textit{Template}), während die eigentlichen Konfigurationen in den zugehörigen Entries definiert werden. Ein Entry wird genau einer Pipe zugeordnet und kann ausschließlich diejenigen Bitfelder beeinflussen, die in der zugehörigen Pipe als Bestandteil des Templates aktiviert wurden. Durch das Verketten mehrerer Pipes lassen sich hochkomplexe Verarbeitungspipelines und damit auch anspruchsvolle Netzwerkanwendungen realisieren (siehe Abbildung~2.2).
 \subsubsection{Hash-Pipes}
 % Hash-Pipes ergänzen und Modi erklären
-Hash-Pipes stellen einen besonderen Typ von Pipe dar. Sie erlauben die implizite Ausführung eines Hashing Algorithmus auf eingehende Pakete. Dieser Hashing Algorithmus erlaubt es dann, entsprechend dem Ergebnis der Anwendung einer Hashing Funktion Pakete auf den der Pipe zugeordneten Einträgen zu verteilen \cite{nvidia_doca_flow_pipe_hash}. Dabei ist es nicht möglich, den entsprechenden Hashing-Algorithmus zu bestimmen; vielmehr wird lediglich eine implementierung seitens Nvidia angeboten. Allerdings lassen sich gewisse Parameter anpassen, die es beispielsweise erlauben, alle Pakete an alle Entries zu senden oder die gewählten Bitfelder, die in den Hashing Algorithmus einfließen sollen, zu ignorieren und alle Pakete vollständig zufällig an alle Entries zu verteilen. Über welche Bitfelder gehashed werden soll, wird mittels der match Maske definiert. So kann beispielsweise entschieden werden, nur über den Source-Port zu hashen. 
+Hash-Pipes stellen einen speziellen Typ von Pipe innerhalb von DOCA Flow dar. Sie ermöglichen die implizite Anwendung eines Hashing-Algorithmus auf eingehende Pakete. Das Ergebnis dieser Hashfunktion wird anschließend verwendet, um Pakete auf die der Pipe zugeordneten Entries zu verteilen \cite{nvidia_doca_flow_pipe_hash}.
 
-Außerdem besitzen Hash-Pipes unterschiedliche Modi, die maßgeblich das Verhalten der Anwendung des Hashing-Algorithmus verändern.
+Der zugrundeliegende Hashing-Algorithmus ist nicht öffentlich spezifiziert und kann nicht beeinflusst oder ersetzt werden; vielmehr stellt Nvidia eine proprietäre Implementierung bereit. Allerdings lassen sich bestimmte Parameter konfigurieren, die das Verhalten des Hashings beeinflussen. Beispielsweise kann festgelegt werden, dass alle Pakete unabhängig vom Hash-Ergebnis an alle Entries weitergeleitet werden, oder dass bestimmte Bitfelder bei der Berechnung ignoriert werden, wodurch eine faktisch zufällige Verteilung auf die Entries entsteht.
+
+Welche Bitfelder in die Hashberechnung einfließen, wird über die Match-Maske definiert. Dadurch kann beispielsweise festgelegt werden, dass ausschließlich auf Basis des Source-Ports gehasht wird.
+
+Zusätzlich unterstützen Hash-Pipes verschiedene Modi, die das Verhalten der Hash-An-wendung maßgeblich beeinflussen.
 \begin{itemize}
     \item \texttt{DOCA\_FLOW\_PIPE\_HASH\_MAP\_ALGORITHM\_HASH}: Dies ist der Standardalgorithmus, der implizit oder explizit bei der Erstellung der Hash-Pipe angegeben werden kann. Er verwendet eine nicht näher spezifizierte oder einsehbare Hash-Funktion zum bestimmen des Indexes der Pipe-Entries. 
     \item \texttt{DOCA\_FLOW\_PIPE\_HASH\_MAP\_ALGORITHM\_RANDOM}: Bei diesem Hash-Pipe-Modus werden Pakete zufällig auf die einer Pipe zugeordneten Entries verteilt.
@@ -103,50 +118,76 @@ Außerdem besitzen Hash-Pipes unterschiedliche Modi, die maßgeblich das Verhalt
     \item \texttt{DOCA\_FLOW\_PIPE\_HASH\_MAP\_ALGORITHM\_FLOODING}: Der Flooding-Algorithmus dupliziert ein Paket und übergibt jedem erstellten Entry eine Kopie des Pakets. So kann garantiert werden, dass alle Entries eine Version des ursprünglichen Pakets erhalten.
     \item \texttt{DOCA\_FLOW\_PIPE\_HASH\_MAP\_ALGORITHM\_SELECT\_ENABLED}: Dieser Modus leitet alle Pakete zu einem bestimmten Entry weiter. Dabei kann nur ein einziges Entry als Target gewählt werden.
 \end{itemize}
-Die Verwendung einer solchen Hash-Pipe ermöglicht es Anwendungen, implizite Verteilungen auf die angelegten Entries einer Pipe auszuführen. Im Gegensatz dazu, also bei einer Basic-Pipe, müssten sonst alle entsprechenden Match-Regionen zur Laufzeit in jedem Entry explizit definiert werden. Dies würde sicherlich mit einem erheblichen Implementierungsaufwand einhergehen.
+Die Verwendung einer Hash-Pipe ermöglicht es Anwendungen, eine implizite Verteilung von Paketen auf die einer Pipe zugeordneten Entries durchzuführen. Im Gegensatz dazu müssen bei einer Basic-Pipe sämtliche Match-Regionen in jedem Entry explizit zur Laufzeit definiert werden. Dies führt in der Praxis zu einem erheblich höheren Implementierungsaufwand.
 \subsection{Hardware Beschleuniger}
 %hier auf eSwitch, DPL-Parser, DPL-MatchAction eingehen
-Der für diese Arbeit wohl wichtigste Hardware-Beschleuniger ist der zuvor genannte eSwitch. Dieser setzt sich im wesentlichen aus drei Komponenten zusammen. Grundsätzlich wird der eSwitch mithilfe einer P4-abgewandelten Sprache namens DOCA Pipelining Language (DPL) programmiert. Die DPL beschreibt wiederum das Verhalten der drei Hauptbestandteile des eSwitches. Zunächst einmal treffen Pakete beim \textbf{DPL-Parser} ein. Dieser bricht das zunächst serielle Paket in eine Bitfeldrepräsentation auf und ermöglicht so die schnellen und Effizienten Bitwise Operationen innerhalb der ASICs. Daraufhin werden die Pakete an die \textbf{DPL-Tabelle} weitergeleitet. Diese enthält die Kombination eines Matches und einer entsprechenden Action und ist somit die Kernausführungs-Einheit im eSwitch. Schließlich werden die Pakete entsprechend den Einträgen in der \textbf{Forwarding-Datenbank} an das entsprechende Ziel weitergeleitet. Der Zusammenhang dieser drei Einheiten ist ebenfalls in Abbildung 2.1 zu sehen.
+Der für diese Arbeit wohl wichtigste Hardwarebeschleuniger ist der zuvor beschriebene eSwitch. Dieser setzt sich im Wesentlichen aus drei Komponenten zusammen. Grundsätzlich wird der eSwitch mithilfe einer an P4 angelehnten Sprache, der sogenannten \textbf{DOCA Pipelining Language (DPL)}, programmiert. Die DPL beschreibt dabei das Verhalten der drei Hauptbestandteile des eSwitches.
+
+Zunächst treffen Pakete im \textbf{DPL-Parser} ein. Dieser zerlegt das ursprünglich serielle Netzwerkpaket in eine Bitfeldrepräsentation und ermöglicht dadurch effiziente Bit-Operationen innerhalb der ASIC-Hardware. Anschließend werden die Pakete an die \textbf{DPL-Tabelle} weitergeleitet. Diese kombiniert Matching- und Action-Definitionen und stellt damit die zentrale Ausführungseinheit innerhalb des eSwitches dar.
+
+Abschließend werden die Pakete entsprechend den Einträgen in der \textbf{Forwarding-Daten-bank} an ihr jeweiliges Ziel weitergeleitet. Der Zusammenhang dieser drei Komponenten ist ebenfalls in Abbildung~2.1 dargestellt.
 \section{XenoFlow 0.1 aus der Bachelorarbeit}
-\textit{Dieses Projekt ist als Anschluss an die Ursprüngliche Implementierung eines Loadbalancers zu verstehen, den ich im Rahmen meiner Bachelorarbeit im ersten Quartal 2025 implementiert habe. Zum damaligen Zeitpunkt war es aufgrund des Umfangs der Thematik nicht möglich, auf architektonische Details einzugehen, was allerdings nun in diesem Rahmen passieren soll.}
+\textit{Dieses Projekt versteht sich als Fortführung der ursprünglichen Implementierung eines Loadbalancers, die im Rahmen der Bachelorarbeit im ersten Quartal 2025 entwickelt wurde. Aufgrund des damaligen Umfangs der Thematik konnten architektonische Details nur eingeschränkt behandelt werden, was im Rahmen dieser Arbeit nun vertieft erfolgt.}
+
 \subsection{Was bisher geschah...}
-% Professioneller Ton
+
 \begin{figure}
-    \centering
-    \includegraphics[width=1\linewidth]{img/Messaufbau PPS.png}
-    \caption{Prototyp XenoFlow mit zwei Backends \cite{heimbrodt2025xenoflow}}
-    \label{fig:placeholder}
+\centering
+\includegraphics[width=1\linewidth]{img/Messaufbau PPS.png}
+\caption{Prototyp XenoFlow mit zwei Backends \cite{heimbrodt2025xenoflow}}
+\label{fig}
 \end{figure}
-XenoFlow war in seiner ursprünglichen 0.1 Fassung ein L3-Loadbalancer, der anhand der Source-IP-Adresse mithilfe eines selbst implementierten, bitfeldbasierten Pseudohashings die Lastverteilungsentscheidung getroffen hat. Dabei wurden je nach Anzahl der aktiven, ansprechbaren Backends die letzten Bits der Source-IP-Adresse als Matchkriterium für die Entries verwendet, die daraufhin schließlich an das entsprechende Backend mittels eines Des-tination-MAC-Adressen-Rewrites weitergeleitet wurden. Das gesamte Projekt wurde damals mittels DOCA Flow implementiert. Grundsätzlich war der Loadbalancer allerdings sehr statisch. Es wurde zu Programmstart einmal aus einer Config-YAML-Datei die aktuelle Konfiguration ausgelesen und entsprechend installiert. Es war also insbesondere keine Änderung der Backends zur Laufzeit möglich. Außerdem hatte der pseudo Hashingalgorithmus das Problem, dass er anfällig für Strukturen in IP-Adressen war, da ein Filtern keiner direkten Hashfunktion entspricht. Dies gilt vor allem, da nur wenige Bits der Source-IP zur Aufteilung verwendet wurden. Es musste also davon ausgegangen werden, dass die letzten Bits der Source-IP-Adresse ausreichend hoch entropisch sind, um äquivalent große Klassen von Paketen für die Lastverteilung zu erzeugen. Diese Funktionsweise ist in Abbildung 3.1 dargestellt.
-\subsection{Ergebnisse}
+
+XenoFlow war in seiner ursprünglichen Version 0.1 als L3-Loadbalancer konzipiert. Die Lastverteilung basierte auf der Source-IP-Adresse und wurde mittels eines selbst implementierten, bitfeldbasierten Pseudohashings realisiert. Abhängig von der Anzahl der aktiven Backends wurden die niederwertigen Bits der Source-IP-Adresse als Match-Kriterium für die Entries verwendet. Die Weiterleitung erfolgte anschließend durch ein Rewrite der Destination-MAC-Adresse zum jeweiligen Backend. Die Implementierung erfolgte vollständig auf Basis von DOCA Flow.
+
+Der Loadbalancer war in dieser Version jedoch statisch aufgebaut. Die Konfiguration wurde einmalig beim Programmstart aus einer YAML-Datei geladen und installiert. Eine Anpassung der Backends zur Laufzeit war nicht vorgesehen. Darüber hinaus zeigte der verwendete Pseudohash eine gewisse Anfälligkeit gegenüber strukturierten IP-Adressräumen, da keine echte Hashfunktion verwendet wurde und lediglich wenige Bits der Source-IP in die Entscheidung einflossen. Es musste daher angenommen werden, dass diese Bits ausreichend hohe Entropie besitzen, um eine gleichmäßige Lastverteilung zu gewährleisten. Die beschriebene Funktionsweise ist in Abbildung~3.1 dargestellt.
+
+\subsection*{Ergebnisse}
+
 \begin{figure}
-    \centering
-    \includegraphics[width=1\linewidth]{img/pps_bandwidth.pdf}
-    \caption{Pakete pro Sekunde - Bandbreite \cite{schroetter2026xenoflow}}
-    \label{fig:placeholder}
+\centering
+\includegraphics[width=1\linewidth]{img/pps_bandwidth.pdf}
+\caption{Pakete pro Sekunde in Abhängigkeit der Bandbreite \cite{schroetter2026xenoflow}}
+\label{fig}
 \end{figure}
+
 \begin{figure}
-    \centering
-    \includegraphics[width=1\linewidth]{img/pps_paketloss.pdf}
-    \caption{Verlorene Pakete pro Sekunde in Prozent \cite{schroetter2026xenoflow}}
-    \label{fig:placeholder}
+\centering
+\includegraphics[width=1\linewidth]{img/pps_paketloss.pdf}
+\caption{Paketverlust in Prozent in Abhängigkeit der Paketrate \cite{schroetter2026xenoflow}}
+\label{fig}
 \end{figure}
-Wie in Abbildung 3.2 zu erkennen ist, war es möglich, eine Last von ca. 100 Gbit/s zu verarbeiten. Allerdings war dies nur bei einer Paketgröße von 128 Bytes möglich. Bei kleineren Paketen stellte sich als absolute Grenze der Verarbeitungsgeschwindigkeit in Paketen pro Sekunde 98 Millionen Pakete pro Sekunde bei einer Größe von weniger als 64 Byte und analog 95 Millionen Pakete pro Sekunde bei einer Größe von mehr als 64 Byte heraus. Diese abrupte Änderung ist in Abbildung 3.2 als \textit{Sudden Drop} betitelt. Wird der Schwellwert überschritten, so werden alle weiteren Pakete, wie in Abbildung 3.3 zu erkennen ist, gedroppt. Die Pakete kommen also noch auf dem Hardwareport der SmartNIC an, werden aber nicht mehr von der Verarbeitungspipeline erfasst und gehen an unbekannter Stelle verloren. Der Anstieg des entstehenden Paketverlusts ist fast linear, und es lässt sich somit davon ausgehen, dass das begrenzende Bottleneck die Taktung eines der verarbeitenden ASICs oder FPGAs ist. Zudem wurden Experimente zum Einfluss der Verarbeitung auf die Round-Trip-Time-Latenz durchgeführt, die gezeigt haben, dass es keinen messbaren Einfluss auf die Verarbeitungsgeschwindigkeit und Bandbreite gab. Dies war insbesondere auch unabhängig von der auf die Netzwerkkarten einwirkenden Last, da zusätzlich zu den Messpaketen auch eine künstliche Basislast erzeugt wurde, die ebenfalls auf den Loadbalancer gerichtet war.
+
+Wie in Abbildung~3.2 zu erkennen ist, konnte eine maximale Last von etwa 100~Gbit/s verarbeitet werden. Dies war jedoch nur bei einer Paketgröße von 128~Byte möglich. Bei kleineren Paketgrößen ergab sich eine maximale Verarbeitungskapazität von 98 Millionen Paketen pro Sekunde für Pakete kleiner als 64~Byte sowie 95 Millionen Paketen pro Sekunde für größere Pakete.
+
+Der in Abbildung~3.2 als \textit{Sudden Drop} bezeichnete Effekt beschreibt einen abrupten Einbruch der Verarbeitungsleistung beim Überschreiten dieser Schwellenwerte. Ab diesem Punkt werden, wie in Abbildung~3.3 ersichtlich, nahezu alle weiteren Pakete verworfen. Die Pakete erreichen zwar weiterhin den Hardwareport der SmartNIC, werden jedoch nicht mehr von der Verarbeitungspipeline aufgenommen und gehen somit innerhalb der Verarbeitungseinheit verloren.
+
+Der Anstieg des Paketverlusts verläuft dabei nahezu linear, sodass davon auszugehen ist, dass ein taktgebundenes Limit innerhalb eines der verarbeitenden ASICs oder FPGAs den Engpass darstellt. Zusätzlich wurden Experimente zur Auswirkung der Verarbeitung auf die Round-Trip-Time durchgeführt, die keinen messbaren Einfluss auf Latenz oder Durchsatz zeigten. Dies galt auch unter zusätzlicher Hintergrundlast, da parallel zu den Messungen eine künstliche Basislast auf den Loadbalancer erzeugt wurde.
 \newpage
 \section{Experimente}
-Im folgenden werden nun die Konkreten Experimente beschrieben, anhand derer die Kennzahlen der BlueField ermittelt werden sollen. Ziel ist es, implizite und unbekannte Grenzwerte der Hardware zu ermitteln. Hintergrund ist es, eine Basis zu schaffen, auf der Entscheidungen hinsichtlich einer möglichen Implementierung von Anwendungen getroffen werden können. So kann beispielsweise die maximal mögliche Durchsatzrate zwischen zwei Hardwareports extrem relevant dafür sein, wo genau in der Topologie die BlueField eingesetzt wird. Alle folgenden Experimente wurden auf dem FIPS-Cluster des Lehrstuhls \textit{Betriebssysteme und Rechnernetze} von Prof. Dr. Bettina Schnor ausgeführt. Die Testumgebung wurde wie folgt aufgesetzt:
+Im Folgenden werden die konkreten Experimente beschrieben, anhand derer die Leistungskennzahlen der BlueField-3 ermittelt werden sollen. Ziel ist es, implizite und nicht dokumentierte Grenzwerte der Hardware zu identifizieren. Dadurch soll eine Entscheidungsgrundlage für mögliche Implementierungen weiterer Anwendungen geschaffen werden. Beispielsweise ist die maximal erreichbare Durchsatzrate zwischen zwei Hardwareports entscheidend für die Platzierung der BlueField-3 innerhalb einer Netzwerk-Topologie.
+
+Alle nachfolgenden Experimente wurden auf dem FIPS-Cluster des Lehrstuhls \textit{Betriebssysteme und Rechnernetze} von Prof. Dr. Bettina Schnor durchgeführt. Die Testumgebung ist wie folgt aufgebaut:
+
 \begin{itemize}
-    \item fips1 - Startknoten für besondere Pakete \textit{Intel Xeon Silver 4314, 128 GB RAM}
-    \item fips2 - Endknoten (Sink) mit Paket-Timestamperfassung \textit{Intel Xeon Silver 4314, 128 GB RAM}
-    \item fips3 - Endknoten (Sink) \textit{Intel Xeon Silver 4314, 128 GB RAM}
-    \item fips4 - Lastgenerator mittels T-Rex \textit{Intel Xeon Silver 4314, 128 GB RAM}
-    \item fips5 - Messknoten mit BlueField-3 NIC \textit{Intel Xeon Silver 4514Y, 128 GB RAM, ARM Cortex A78, 32 GB RAM}
+    \item fips1 — Startknoten für spezielle Pakete (\textit{Intel Xeon Silver 4314, 128 GB RAM})
+    \item fips2 — Endknoten (Sink) mit Paket-Timestamp-Erfassung (\textit{Intel Xeon Silver 4314, 128 GB RAM})
+    \item fips3 — Endknoten (Sink) (\textit{Intel Xeon Silver 4314, 128 GB RAM})
+    \item fips4 — Lastgenerator mittels T-Rex (\textit{Intel Xeon Silver 4314, 128 GB RAM})
+    \item fips5 — Messknoten mit BlueField-3 NIC (\textit{Intel Xeon Silver 4514Y, 128 GB RAM, ARM Cortex-A78, 32 GB RAM})
 \end{itemize}
 
 \subsection{ebpf\_mac\_rewrite}
-Die Motivation dieses Experiments besteht darin, einen sinnvollen Vergleichswert zu den gemessenen Bandbreiten der BlueField-3 zu bestimmen und die Hardware-Beschleunigung direkt mit einer traditionell auf der CPU ausgeführten Variante vergleichen zu können. Dazu wurde das aktuelle Framework der eBPF Implementierung des Linux-Kernels gewählt. 
 
-eBPF ermöglicht es, eigenständig implementierte Funktionen an Events aus dem Kernelspace zu hängen und somit asynchron auf Signale aus dem Kernel reagieren zu können. Dieses Vorgehen erlaubt es, extrem effizient und Latenzarm auf ein Ereignis zu reagieren, da die Anwendungen tatsächlich im Kernelspace ausgeführt werden können. Dabei wird das Express Data Path (XDP) aus eBPF verwendet \cite{vieira2020ebpfxdp}. XDP erlaubt es, große Teile des Linux Netzwerkstacks zu umgehen und direkt in der Anwendung zu verarbeiten. Dies dient abermals der Effizienzsteigerung und Latenzverringerung. In Listing 1 wird ein eBPF Programm beschrieben, welches die Ziel-MAC-Adresse eines eingehenden Pakets ändert. Damit soll die Action des XenoFlow Loadbalancers simuliert werden, die die tatsächliche Änderung der Ziel-MAC vornimmt. Dazu sei erwähnt, dass das entsprechende Matching, also die Auswahl des Pakets aus dem Datenstrom, hier nicht implementiert wird. Der Vergleich ist somit ein best-case im Vergleich zu XenoFlow, da wesentlich weniger Overhead aufkommt. Zusätzlich wurde im gleichen Stil ein weiteres Programm für die ConnectX-7 implementiert, um den genannten Matching Overhead auszuschließen. Bei besagtem Programm wird ebenfalls lediglich die Ziel-MAC-Adresse, ohne Matching, geändert. Da ConnectX-7 ebenfalls mittels DOCA Flow programmiert werden kann, war der Code-Aufwand dafür relativ gering, und es konnten weite Teile von XenoFlows Kern nachverwendet werden. Grundsätzlich wird in diesem Experiment die Laufzeit zwischen dem Senden eines Pakets von fips1 über den entsprechenden Action Host (also entweder BlueField oder eBPF Host) weitergeleitet zu einem Backend. Wird der Sende-Zeitstempel von dem Empfangs-Zeitstempel abgezogen, so bildet dies die Round-Trip-Time.
+Die Motivation dieses Experiments besteht darin, einen Referenzwert für die gemessenen Bandbreiten der BlueField-3 zu bestimmen und die hardwarebeschleunigte Variante direkt mit einer klassisch CPU-basierten Implementierung zu vergleichen. Hierzu wird das eBPF-Framework des Linux-Kernels verwendet.
+
+eBPF ermöglicht es, benutzerdefinierte Programme an Ereignisse im Kernelspace zu koppeln und asynchron auf Kernel-Events zu reagieren. Dadurch können sehr effiziente und latenzarme Verarbeitungslogiken implementiert werden, da die Ausführung unmittelbar im Kernelkontext erfolgt. In diesem Experiment wird insbesondere Express Data Path (XDP) innerhalb von eBPF verwendet \cite{vieira2020ebpfxdp}. XDP ermöglicht es, große Teile des Linux-Netzwerkstacks zu umgehen und Pakete frühzeitig im Empfangspfad zu verarbeiten, was die Latenz weiter reduziert.
+
+Listing 1 zeigt ein eBPF-Programm, das die Ziel-MAC-Adresse eingehender Pakete modifiziert und damit die entsprechende Action des XenoFlow-Loadbalancers approximiert. Das Paket-Matching wird in dieser Implementierung bewusst nicht berücksichtigt, sodass ein Best-Case-Szenario im Vergleich zu XenoFlow vorliegt, da kein zusätzlicher Selektions-Overhead entsteht.
+
+Zusätzlich wurde eine analoge Implementierung für die ConnectX-7-Plattform erstellt, um auch dort den Matching-Overhead auszuschließen. In diesem Fall erfolgt ebenfalls ausschließlich die Modifikation der Ziel-MAC-Adresse ohne vorherige Filterlogik. Da ConnectX-7 ebenfalls über DOCA Flow programmierbar ist, konnte der Implementierungsaufwand gering gehalten und große Teile der XenoFlow-Logik wiederverwendet werden.
+
+Grundsätzlich misst dieses Experiment die Laufzeit zwischen dem Senden eines Pakets von fips1 über den jeweiligen Verarbeitungsknoten (BlueField oder eBPF-Host) bis zum entsprechenden Backend. Die Round-Trip-Time ergibt sich aus der Differenz zwischen Sende- und Empfangszeitstempel.
 \label{code:ebpf-code}
 % Mehr auf konkrete Codezeilen eingehen (erklären)
 % Intrinsic-Signatur
@@ -181,7 +222,11 @@ int xdp_mac_rewrite(struct xdp_md *ctx)
     return XDP_TX;
 }
 \end{minted}
-Das Code-Stück zeigt die an ein Paket-Empfang geknüpfte Call-Back-Funktion, die die entsprechenden MAC-Header-Felder ändert. Zunächst wird in Zeile 9 die Source-IP definiert, die durch ein Match zwischen dem eingehenden Paket und dem eigenen Wert zur weiteren Paketverarbeitung führen soll. Alle anderen Source-IPs sollen regulär weitergegeben werden. Der eigentliche Vergleich zwischen der Variablen \texttt{fips1} und der \texttt{saddr} findet mittels der \texttt{\_\_builtin\_memcmp()} in Zeile 11 statt. Alle Pakete, die nicht der entsprechenden \texttt{fips1}-IP entsprechen, geben bei diesem eBPF Funktionsaufruf also \texttt{XDP\_PASS} zurück und werden regulär weitergeleitet. Das Umschreiben der Ziel-MAC-Adresse findet zuletzt in Zeile 19 bis 26 statt, in denen die Memory Region durch die neu erstellte \texttt{new\_dst}-Adresse ersetzt wird und die entsprechenden MAC-Adressen-Teile für den neuen Zielknoten eingetragen werden.
+Das Codebeispiel zeigt die an den Paketempfang gekoppelte Callback-Funktion, die die entsprechenden Felder des MAC-Headers modifiziert. Zunächst wird in Zeile~9 die Source-IP-Adresse definiert, die im Rahmen eines Matchings mit dem eingehenden Paket zur weiteren Verarbeitung herangezogen wird. Alle Pakete, deren Source-IP nicht mit diesem Wert übereinstimmt, werden unverändert weitergeleitet.
+
+Der eigentliche Vergleich zwischen der Variablen \texttt{fips1} und der \texttt{saddr} erfolgt in Zeile~11 mittels der Funktion \texttt{\_\_builtin\_memcmp()}. Pakete, die nicht der entsprechenden \texttt{fips1}-IP entsprechen, geben in diesem eBPF-Funktionspfad den Rückgabewert \texttt{XDP\_PASS} zurück und werden damit regulär durch den Netzwerkstack weiterverarbeitet.
+
+Das Umschreiben der Ziel-MAC-Adresse erfolgt schließlich in den Zeilen~19 bis 26, in denen die entsprechende Speicherregion durch die neu gesetzte \texttt{new\_dst}-Adresse überschrieben wird und die Ziel-MAC-Adresse für den neuen Knoten eingetragen wird.
 \subsubsection*{Ergebnisse}
 \label{experiment:rtt}
 \begin{figure}
@@ -191,9 +236,13 @@ Das Code-Stück zeigt die an ein Paket-Empfang geknüpfte Call-Back-Funktion, di
     \label{fig:placeholder}
 \end{figure}
 % Auf Flow baseline eingehen und ggf. erweitern
-Wie in Abbildung 4.1 zu sehen ist, ist die RTT eines vergleichbaren eBPF-Programms \textbf{wesentlich größer} als die von XenoFlow. Außerdem ist zu beachten, dass das verwenden eines Matches ebenfalls mit signifikanten Leistungseinbußen einhergeht, da die Flow Baseline noch besser performt als der XenoFlow Loadbalancer. Dies kann angenommen werden, da der einzige Unterschied zwischen der \texttt{Flow Baseline} und der \texttt{XenoFlow} in diesem Experiment der zusätzliche Match ist, der bei \texttt{XenoFlow} zum Verteilen der Last verwendet wird. Alle drei Implementierungen führen im Kern allerdings dieselbe Operation durch und ändern nach dem Erhalt eines Paketes mit einer bestimmten Source-IP die Target-MAC auf den empfangenden Messknoten.
+Wie in Abbildung~4.1 dargestellt, ist die RTT des vergleichbaren eBPF-Programms deutlich höher als die von XenoFlow. Zusätzlich ist zu beachten, dass die Verwendung eines Matchings mit messbaren Performanceeinbußen einhergeht, da die \textit{Flow Baseline} eine geringere RTT aufweist als der XenoFlow-Loadbalancer.
+
+Dieser Effekt lässt sich darauf zurückführen, dass der einzige Unterschied zwischen der \textit{Flow Baseline} und XenoFlow in diesem Experiment in der zusätzlichen Matching-Logik besteht, die bei XenoFlow zur Lastverteilung eingesetzt wird. Alle drei betrachteten Implementierungen führen im Kern jedoch dieselbe Operation aus: Nach Empfang eines Pakets mit einer bestimmten Source-IP wird die Ziel-MAC-Adresse auf den jeweiligen Messknoten umgeschrieben.
 \subsection{max\_pipes}
-Im max\_pipes Experiment wird untersucht, wie viele Pipes in DOCA Flow von einer Anwendung aus angelegt werden können. Da eine Pipe ein Template darstellt, kann man davon ausgehen, dass die gemessene Anzahl maximaler Pipes pro Anwendung aussagt, wie viele unterscheidbare Templates der zugrunde liegenden Templating-Engine angelegt werden können. Im folgenden Code wird versucht, unbegrenzt viele Pipes anzulegen. Ziel ist es herauszufinden, wann die Laufzeit abstürzt und ob das Ergebnis reproduzierbar ist. 
+Im \texttt{max\_pipes}-Experiment wird untersucht, wie viele Pipes innerhalb von DOCA Flow pro Anwendung instanziiert werden können. Da eine Pipe ein Template repräsentiert, lässt sich die maximal erreichbare Anzahl an Pipes als Indikator dafür interpretieren, wie viele unterschiedliche Template-Instanziierungen die zugrunde liegende Templating-Engine verarbeiten kann.
+
+Im Rahmen dieses Experiments wird versucht, eine möglichst große Anzahl an Pipes zu erzeugen. Ziel ist es, den Punkt zu bestimmen, an dem die Anwendung nicht mehr stabil ausführbar ist, sowie die Reproduzierbarkeit dieses Verhaltens zu evaluieren.
 
 
 % Diff zur Nvidia Docu aufzeigen
@@ -214,12 +263,18 @@ doca_error_t doca_flow_pipe_create_v1(
     struct doca_flow_pipe ** pipe
 );
 \end{minted}
-Die \texttt{doca\_flow\_pipe\_cfg} gibt hier die entsprechenden Feldaktivierungen an. Diese beschreiben, welche Felder im folgenden von Entries verwendet werden können, um entweder Matching oder Actions zu erlauben. Aber auch IDs für den späteren Monitoring Zugriff müssen hierin bereits mittels einer Maske angelegt werden. Mehr dazu in der DOCA Flow Dokumentation unter \url{https://networking-docs.nvidia.com/doca/archive/3-4-0/doca-flow}. Die beiden Unterstrukturen \texttt{doca\_flow\_fwd\_v1 fwd} und \texttt{fwd\_miss} geben an, an welches Ziel bei einem entsprechenden Hit oder Miss einer Pipe weitergeleitet werden soll. Zuletzt wird die vom Nutzer angelegte Datenstruktur \texttt{struct doca\_flow\_pipe ** pipe} per Referenz übergeben, damit DOCA Flow das entsprechende Struct mit Werten füllen kann.
+Die \texttt{doca\_flow\_pipe\_cfg}-Struktur definiert die Aktivierung einzelner Felder innerhalb einer Pipe. Diese legt fest, welche Header-Felder in den nachgelagerten Entries für Matching- und Action-Operationen verwendet werden dürfen. Darüber hinaus müssen bereits hier auch Identifikatoren für den späteren Monitoring-Zugriff mittels entsprechender Bitmasken konfiguriert werden. Weitere Informationen hierzu sind in der DOCA-Flow-Dokumentation \cite{nvidia_doca_flow_architecture}. 
+
+Die beiden Unterstrukturen \texttt{doca\_flow\_fwd\_v1.fwd} und \texttt{fwd\_miss} definieren jeweils das Weiterleitungsverhalten für den Fall eines Match- beziehungsweise Miss-Ereignisses einer Pipe. Abschließend wird die vom Nutzer bereitgestellte Datenstruktur \texttt{struct doca\_flow\_pipe **pipe} per Referenz übergeben, sodass DOCA Flow die entsprechende Struktur initialisieren und mit den erzeugten Werten befüllen kann.
+
 \subsubsection*{Ergebnisse}
-Ab einer Anzahl von \textbf{505} Pipes endet die DOCA Flow-Laufzeit mit einem Fehlercode 0. Es ließ sich leider keine Bedeutung aus der DOCA Flow Dokumentation finden. Das Experiment wurde dreimal durchgeführt, und das Ergebnis konnte jedes mal reproduziert werden.
+
+Ab einer Anzahl von 505 angelegten Pipes endet die DOCA-Flow-Laufzeit mit einem Fehlercode 0. Eine eindeutige Interpretation dieses Rückgabewerts ließ sich anhand der verfügbaren Dokumentation nicht ableiten. Das Experiment wurde dreimal durchgeführt, wobei das Verhalten in allen Fällen reproduzierbar war.
 \newpage
 \subsection{max\_entries}
-Im max\_entries Experiment wurde sehr ähnlich zum max\_pipes Experiment einfach so lange das entsprechende Entry erzeugt, bis es zu einem Laufzeitfehler kam. Es wurden die Entries zu einer einzigen Pipe hinzugefügt, sodass der ermittelte Wert als maximale Anzahl an Entries pro Pipe angesehen werden kann. Zusätzlich müssen die hinzugefügten Entries noch verarbeitet werden. Dies geschieht ebenfalls mit einer intrinsischen Funktion, wie im folgenden Code zu sehen ist:
+Im \texttt{max\_entries}-Experiment wird analog zum \texttt{max\_pipes}-Experiment vorgegangen. Dabei werden kontinuierlich Entries erzeugt, bis ein Laufzeitfehler auftritt. Alle Entries werden einer einzigen Pipe hinzugefügt, sodass der ermittelte Wert als maximale Anzahl unterstützter Entries pro Pipe interpretiert werden kann.
+
+Zusätzlich müssen die hinzugefügten Entries verarbeitet werden. Dies erfolgt ebenfalls über eine intrinsische Funktion, wie im folgenden Codeausschnitt dargestellt ist:
 \begin{minted}[linenos]{c}
 while(1) {
     result = doca_flow_pipe_add_entry(
@@ -249,7 +304,9 @@ doca_error_t doca_flow_pipe_basic_add_entry_v1(
     struct doca_flow_pipe_entry** entry
 );
 \end{minted}
-Mittels dieser Funktion können Entries einer Pipe zugeordnet werden. Die entsprechende Pipe wird als Pointer übergeben. Dort sind wieder die bekannten Datenstrukturen Match, Actions, Monitor und Forward aus der Pipe-Definition zu erkennen. Leider konnte zur genauen Bedeutung der restlichen Felder keine Erklärung gefunden werden. Wir erhalten lediglich den entsprechenden Header unter \texttt{/opt/mellanox/doca/include/doca\_ctsd\_flow.h}, und die zugehörigen Implementierungen befinden sich in kompilierten Shared-Objects. 
+Mittels dieser Funktion können Entries einer Pipe zugeordnet werden. Die entsprechende Pipe wird dabei als Pointer übergeben. Innerhalb der Datenstruktur sind die bekannten Komponenten \textit{Match}, \textit{Actions}, \textit{Monitoring} und \textit{Forwarding} aus der Pipe-Definition wiederzufinden.
+
+Die genaue Semantik der weiteren Felder konnte im Rahmen dieser Arbeit nicht abschließend geklärt werden. Es steht lediglich der entsprechende Header unter \newline \texttt{/opt/mellanox/doca/include/doca\_ctsd\_flow.h} zur Verfügung, während die zugehörigen Implementierungen ausschließlich in kompilierten Shared-Object-Bibliotheken vorliegen.
 \newpage
 Nach dem Hinzufügen eines Entries sind diese allerdings noch nicht aktiv. Dies passiert erst nach dem Aufruf der folgenden Funktion:
 \begin{minted}[linenos]{c}
@@ -260,15 +317,21 @@ doca_error_t doca_flow_entries_process(
     uint32_t max_processed_entries
 );
 \end{minted}
-Hierbei werden neben dem Port (Zeile 2) auch der Timeout angegeben, indem das Entry eingetragen werden muss (Zeile 4). Worauf sich die \texttt{pipe\_queue} bezieht, ist aus dem Header \texttt{/opt/mellanox/doca/include/doca\_flow.h} leider nicht ersichtlich. Dort wird lediglich \textit{Queue identifier} als Funktions-Parameter-Dokumentation angegeben. 
+Hierbei werden neben dem Port (Zeile 2) auch der Timeout angegeben, innerhalb dessen das Entry eingetragen werden muss (Zeile 4). Die genaue Bedeutung von \texttt{pipe\_queue} ist aus dem Header \texttt{/opt/mellanox/doca/include/doca\_flow.h} nicht eindeutig ersichtlich. Dort wird lediglich \textit{Queue identifier} als Funktionsparameter dokumentiert.
 \subsubsection*{Ergebnisse}
-Nach einer Anzahl von \textbf{8192} Einträgen in einer Pipe beendet die DOCA Flow runtime mit einem Fehler. Dazu sei erwähnt, dass die Runtime bereits nach dem hinzufügen abstürzt, also insbesondere vor dem eigentlichen Prozessierungsaufruf. In neueren DOCA Flow Versionen ist es nun allerdings auch möglich, die Größe der Pipes anzupassen und entsprechend mehr Entries hinzuzufügen.
+Nach dem Hinzufügen von \textbf{8192} Einträgen zu einer Pipe beendet die DOCA-Flow-Runtime die Ausführung mit einem Fehler. Dabei ist zu beachten, dass der Fehler bereits beim Hinzufügen der Entries auftritt, also insbesondere vor dem eigentlichen Verarbeitungsaufruf.
+
+In neueren DOCA-Flow-Versionen besteht jedoch die Möglichkeit, die Größe von Pipes explizit zu konfigurieren und dadurch eine höhere Anzahl an Entries zu unterstützen.
 
 \newpage
 
 \subsection{PCC}
 % Genauer auf Skript eingehen
-Eine der wichtigsten Anforderungen für einen Loadbalancer wie XenoFlow, der auf L3 agiert, ist es, die Konsistenz des Kontexts der Backends für TCP-Verbindungen zu wahren. TCP Verbindungen sind stateful und ermöglichen es, zwischen Client und Server einen Kontext zu etablieren, der komplexere Anwendungen ermöglicht. Dies ist für einen Loadbalancer dringend zu beachten, da sonst zwei Pakete desselben Kontextes an unterschiedliche Backends weitergeleitet werden. Somit wäre die Konsistenz gebrochen und die Kontextsicherheit zerstört. Daher ist es notwendig, sicherzustellen, ob Hash Pipes wirklich nur auf den angegebenen Feldern den Hashing Algorithmus anwenden oder auch implizit andere Felder wie timestamps oder ähnliches mit einbeziehen, die die Hash Funktion negativ beeinflussen würden. Um dies zu testen, wurde ein Python Skript entwickelt, welches bestimmte Felder variiert und zeigt, wie sich das Hashing verhält.
+Eine der zentralen Anforderungen an einen L3-Loadbalancer wie XenoFlow besteht darin, die Konsistenz des Kontextes von TCP-Verbindungen sicherzustellen. TCP-Verbindungen sind zustandsbehaftet (stateful) und ermöglichen den Aufbau eines Kommunikationskontextes zwischen Client und Server, der die Grundlage für komplexere Anwendungen bildet. Für einen Loadbalancer ist diese Eigenschaft kritisch, da andernfalls Pakete desselben TCP-Kontextes an unterschiedliche Backends weitergeleitet werden könnten. In diesem Fall wäre die Kontextkonsistenz verletzt und die Session-Integrität nicht mehr gewährleistet.
+
+Daher muss sichergestellt werden, dass Hash-Pipes den Hashing-Algorithmus ausschließlich auf die explizit angegebenen Felder anwenden und keine weiteren, impliziten Paketfelder wie beispielsweise Timestamps in die Berechnung einfließen, da diese das Hash-Ergebnis unbeabsichtigt beeinflussen könnten.
+
+Zur Überprüfung dieses Verhaltens wurde ein Python-Skript entwickelt, das gezielt einzelne Paketfelder variiert und die Auswirkungen auf die Hash-Verteilung analysiert.
 \begin{minted}[linenos]{python}
 # ...
 if __name__ == "__main__":
@@ -299,18 +362,22 @@ In diesem Python Skript werden 3 Tests durchgeführt.
     \item Test 3: Variiert die Destination-IP und sendet UDP-Pakete.
 \end{itemize}
 \subsubsection*{Ergebnisse}
-Es konnte gezeigt werden, dass in der Tat lediglich die per Match-Definition bestimmten Bitfelder in die Hash Berechnung einfließen. Das bedeutet, dass zwei Pakete mit entsprechend gleicher Signatur garantiert beim gleichen Backend landen werden. Diese Tatsache legt eine wichtige Grundlage für die spätere Implementierung fest, da dieser Fakt benötigt wird, um die Bucket Semantik abbilden zu können. Nur mit der Gewissheit einer persistenten Hashing-Zuordnung kann gewährleistet werden, dass kontextbehaftete Protokolle wie beispielsweise TCP unterstützt werden.
+Es konnte gezeigt werden, dass ausschließlich die in der Match-Definition explizit angegebenen Bitfelder in die Hash-Berechnung einfließen. Dies impliziert, dass zwei Pakete mit identischer Signatur deterministisch demselben Backend zugeordnet werden.
+
+Diese Eigenschaft bildet eine zentrale Grundlage für die spätere Implementierung, da sie für die Abbildung einer Bucket-Semantik erforderlich ist. Nur unter der Annahme einer stabilen und deterministischen Hash-Zuordnung kann gewährleistet werden, dass zustandsbehaftete Protokolle wie TCP korrekt unterstützt werden.
 \subsection{entry\_latency}
 % PTP Setup genauer beschreiben
-Die aufwendigste Untersuchung und somit auch das komplexeste Experiment dieser Projektarbeit beschäftigt sich mit der Latenz des Einfügens eines Eintrags in eine Pipe. Dabei soll gemessen werden, wie viel Zeit zwischen dem Funktionsaufruf zum Hinzufügen eines Elements und dem tatsächlichen Aktivwerden vergeht. Damit die gemessenen Latenzwerte nah an einer realistischen Umgebung sind, wurde das ganze als eine verteilte Messung über insgesamt drei Knoten durchgeführt. 
+Die aufwendigste Untersuchung und zugleich das komplexeste Experiment dieser Projektarbeit beschäftigt sich mit der Latenz beim Einfügen eines Eintrags in eine Pipe. Ziel ist es zu bestimmen, wie viel Zeit zwischen dem Funktionsaufruf zum Hinzufügen eines Elements und dessen tatsächlicher Aktivierung vergeht. Um realitätsnahe Messwerte zu erhalten, wurde das Experiment als verteiltes Setup über drei Knoten durchgeführt.
 
-Grundsätzlich war die Idee, auf einem Knoten (fips1) einen kontinuierlichen Paketstrom zu erzeugen. Auf der BlueField-3 wurde auf der Seite des ARM-Hosts während dieses Paketstroms ein Entry erzeugt und einer Pipe hinzugefügt. Dabei wird ein Erstellungs-Zeitstempel erfasst. Sobald nun diese Entry-Regel aktiv ist, werden Pakete an den dritten Host (fips3) weitergeleitet. Dort wird beim Empfangen des ersten Pakets ebenfalls der Zeitstempel als Empfangs-Zeitstempel erfasst. Die Idee ist es nun, den Erstellungs-Zeitstempel vom Empfangs-Zeitstempel abzuziehen. Der erhaltene Wert gibt dann die Zeit an, in der die DOCA Flow Laufzeit die entsprechende Erstellung und Aktivierung vornimmt. Dazu sei erwähnt, dass natürlich die Netzwerklatenz abgezogen werden muss, um die tatsächliche Hardware-Laufzeit zu bestimmen. Das Problem ist nun, dass die Messung im Bereich von $\mu$-Sekunden stattfindet. Somit ist es zwingend erforderlich, dass die beiden zeitnehmenden Knoten ihre Uhren synchronisieren. 
+Grundsätzlich wird auf Knoten fips1 ein kontinuierlicher Paketstrom erzeugt. Auf der BlueField-3 wird auf der Seite des ARM-Hosts während dieses Paketstroms ein Entry erzeugt und einer Pipe hinzugefügt. Dabei wird ein Erstellungs-Zeitstempel erfasst. Sobald die entsprechende Regel aktiv ist, werden Pakete an den dritten Knoten fips3 weitergeleitet. Dort wird beim Empfang des ersten Pakets ebenfalls ein Zeitstempel als Empfangszeitpunkt erfasst.
 
-Als Basisuhr wurden die Hardware-Uhren der jeweiligen Netzwerkkarten genutzt. Die beiden Hosts wurden untereinander mittels \textbf{PTP} synchronisiert. Damit die Hardware-Uhren der Netzwerkkarte auch im Kernel verfügbar sind, wurde das Tool \texttt{phc2sys} aus dem Linux-PTP-Paket verwendet. Das Tool erlaubt es, zwischen der Netzwerkkarte und dem Linux-Kernel sehr genau zu synchronisieren. Dies wurde sowohl auf der BlueField-3 selbst als auch auf dem empfangenden Knoten durchgeführt.
+Die Differenz zwischen Erstellungs- und Empfangszeitstempel liefert zunächst die Gesamtzeit für Erstellung und Aktivierung der DOCA-Flow-Regel. Zur Bestimmung der reinen Verarbeitungslatenz muss zusätzlich die Netzwerklatenz herausgerechnet werden. Da sich die Messung im Bereich von Mikrosekunden bewegt, ist eine präzise Synchronisation der beteiligten Uhren zwingend erforderlich.
 
-Beim Synchronisieren war die Hardware-Uhr der BlueField-3 sehr auffällig ungenau und hatte einen Jitter mit einer maximalen Auslenkung von $24 \mu s$ (Synchronisation zwischen Con-nectX-7-Karte und Bluefield-3 Hardware-Clock). Dies ist eigentlich sehr ungewöhnlich, da Netzwerkkarten-Hardware-Uhren normalerweise gegen einen Kristalloszillator synchronisieren, der eine Genauigkeit im $ns$-Sekundenbereich hat. 
+Als Referenzzeitbasis werden die Hardware-Clocks der Netzwerkkarten verwendet. Die beteiligten Hosts werden mittels PTP synchronisiert. Um die Hardware-Uhren der Netzwerkkarten im Kernel verfügbar zu machen, wird das Tool \texttt{phc2sys} aus dem Linux-PTP-Stack eingesetzt. Dieses ermöglicht eine hochpräzise Synchronisation zwischen NIC-Hardware-Clock und Systemzeit. Die Synchronisation wurde sowohl auf der BlueField-3 als auch auf dem empfangenden Knoten durchgeführt.
 
-Ein weiteres großes Problem war, dass es normalerweise notwendig ist, eine hohe Paketfrequenz zu verwenden, um die Genauigkeit der Messung zu erhöhen. Da allerdings auf dem fips3 Backend mittels eines klassischen Tcpdumps gemessen wurde, musste eine andere Herangehensweise entwickelt werden, um zu vermeiden, dass die entsprechenden Log-Dateien extrem groß werden. Dazu wurde eine gemäßigtere Anzahl an Paketen pro Sekunde verschickt, die allerdings mit einer Zufälligen Wartezeit zwischen den Paketen abgeschickt wurden. Durch dieses künstliche Streuen der Sende-Zeitstempel ist es möglich, statistisch an die tatsächlichen Werte des ersten Empfangs zu kommen. Im folgenden Code ist der random delay zu sehen:
+Bei der Synchronisation zeigte die Hardware-Clock der BlueField-3 eine auffällige Instabilität mit einem Jitter von bis zu $24\mu s$ (gemessen zwischen einer ConnectX-7-Karte und der BlueField-3-Hardware-Clock). Dies ist ungewöhnlich, da NIC-Hardware-Uhren typischerweise von einem hochpräzisen Quarzoszillator mit Genauigkeiten im Nanosekundenbereich abgeleitet werden.
+
+Ein weiteres Problem bestand darin, dass zur Erhöhung der Messgenauigkeit üblicherweise eine hohe Paketfrequenz erforderlich ist. Da jedoch auf dem Backend-Knoten fips3 mittels tcpdump aufgezeichnet wurde, musste ein Ansatz gewählt werden, der eine Explosion der Logdaten verhindert. Daher wurde die Paketrate reduziert und zusätzlich eine zufällige Verzögerung zwischen den Sendepaketen eingeführt. Durch diese zufällige Streuung der Sendetimestamps kann die Verteilung der ersten Empfangsereignisse statistisch stabiler approximiert werden. Der folgende Code zeigt die Implementierung des Random-Delays:
 \begin{minted}[linenos]{c}
 while(1) {
     struct timespec ts;
@@ -355,9 +422,15 @@ Wie in der Abbildung 4.2 zu sehen ist, liegen die meisten Werte zwischen 150 und
 \section{Neuerungen in XenoFlow 1.0}
 %\subsection{hash\_pipe}
 % Siehe Doku einfügen
-Die Einführung der Hash Pipe ist eine der größten Neuerungen und somit auch eines der Kernarbeitsziele dieses Projekts gewesen. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie es, einen implizit ausgeführten Hashing Algorithmus auf die Netzwerkpakete anzuwenden. Implizit deshalb, da nicht explizit angegeben werden muss, wie der Hashing Algorithmus aufgebaut ist. Somit werden die Pakete gleichmäßig auf die entsprechenden Entries verteilt. 
+Die Einführung der Hash-Pipe stellt eine der zentralen Neuerungen und damit eines der Kernziele dieses Projekts dar. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie die implizite Anwendung eines Hashing-Algorithmus auf Netzwerkpakete. Implizit ist dieser Mechanismus insofern, als dass die konkrete Implementierung des Hashing-Algorithmus nicht durch den Anwender spezifiziert werden muss.
 
-Außerdem wurde in diesem Zug auch die Möglichkeit implementiert, dynamisch zur Laufzeit Backends hinzuzufügen und zu löschen. Dadurch ist eine genauere Anpassung des Loadbalancers in einer realen Einsatzsituation möglich, da bisher eine Änderung der Backends einen Neustart des Programms erfordern würde. Da dies mit entsprechendem Paketverlust einhergehen würde, war dieses Feature zu beginn des Praktikums im Fokus. Die Backends werden mittels einer REST-API auf dem Port 8080 hinzugefügt. Es kann mit jedem API-Call jeweils eine Anzahl von Backends hinzugefügt werden, sodass die neue Anzahl an Backends wieder einer Potenz von 2 entspricht. Im folgenden Code ist die entsprechende Funktion zum dynamischen hinzufügen eines Backends gegeben. Es sei dazu erwähnt, dass es sich um eine stark gekürzte Variante handelt. Die vollständige Version ist im Projekt Github-Repository einzusehen. Die entscheidenden aufgerufenen intrinsischen Funktionen sind hierbei:
+Dadurch erfolgt die Verteilung der Pakete auf die entsprechenden Entries automatisch und im Idealfall gleichmäßig.
+
+Darüber hinaus wurde im Rahmen dieser Arbeit die Möglichkeit implementiert, Backends dynamisch zur Laufzeit hinzuzufügen und zu entfernen. Dadurch kann der Loadbalancer flexibler an reale Einsatzszenarien angepasst werden, da in der ursprünglichen Implementierung eine Änderung der Backend-Konfiguration einen Neustart der Anwendung erforderte. Dies hätte wiederum mit potenziellem Paketverlust einhergehen können, weshalb dieses Feature bereits zu Beginn des Projekts im Fokus stand.
+
+Die Verwaltung der Backends erfolgt über eine REST-API auf Port 8080. Über einzelne API-Aufrufe kann jeweils eine Anzahl von Backends hinzugefügt werden, sodass die Gesamtzahl der Backends wieder einer Zweierpotenz entspricht.
+
+Im folgenden Codeausschnitt ist die entsprechende Funktion zum dynamischen Hinzufügen eines Backends dargestellt. Es handelt sich dabei um eine stark gekürzte Version; die vollständige Implementierung ist im GitHub-Repository des Projekts einsehbar. Die zentral verwendeten intrinsischen Funktionen sind hierbei:
 \begin{itemize}
     \item \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zum Erstellen des Entry, explizit in einer Hash-Pipe.
     \item \texttt{doca\_flow\_entries\_process()} ruft die Prozessierung in der Runtime auf (siehe 4.3).
@@ -387,9 +460,13 @@ doca_error_t xenoflow_add_backend(XenoFlow *xeno, char *name, char *mac) {
     configAddBackend(xeno->config, new_backend);
 }
 \end{minted}
-Interessant ist hierbei die Zeile 19, da in dieser die intrinsische Funktion \texttt{doca\_flow\_pipe\_hash\_add\_entry()} verwendet wird. Es ist also nicht möglich, Entries mittels der vorherigen \texttt{doca\_flow\_pipe\_add\_entry()} in einer Hash-Pipe hinzuzufügen. Der Hintergrund ist vermutlich, dass beim Aufruf von \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zusätzliche Funktionen aufgerufen werden müssen, um die entsprechenden Match-Masken neu aufzubauen. Diese Vermutung ist entstanden, da im Rahmen der Bachelorarbeit dieser Mechanismus selbst implementiert wurde und dadurch auffiel, dass bei einem Filtermechanismus, der als Eingabe \cite{heimbrodt2025bluefield} ein Bitfeld, also eine binäre Zahl, erhält, fast immer eine Anzahl von Filtern erstellt werden muss, die einer Potenz von 2 entspricht. Zuletzt wird in Zeile 22 der XenoFlow Konfiguration das neue Backend mittels \texttt{configAddBackend()} hinzugefügt. Dies geschieht, damit einerseits alle angelegten Backends in einer Datenstruktur gesammelt werden und somit beispielsweise auch Backends gelöscht werden können, aber auch, um eine Schnittstelle mit einem eventuellen Frontend/REST-API herstellen zu können.
+Interessant ist hierbei insbesondere Zeile~19, da dort die intrinsische Funktion \texttt{doca\_flow\_pipe\_hash\_add\_entry()} verwendet wird. In einer Hash-Pipe ist es somit nicht möglich, Entries über die generische Funktion \texttt{doca\_flow\_pipe\_add\_entry()} hinzuzufügen.
 
-Als HTTP-Server wurde im Projekt \textit{Micro HTTPD} verwendet. Diese Bibliothek ist extrem leichtgewichtig und ermöglicht es, schnell HTTP-Server aufzubauen, ohne große Teile des HTTP-Standards reimplementieren zu müssen.
+Der Hintergrund dieses Verhaltens liegt vermutlich darin, dass beim Aufruf von \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zusätzliche interne Operationen erforderlich sind, um die zugehörigen Match-Masken neu zu berechnen und die Hash-Zuordnung konsistent zu halten. Diese Annahme basiert auf Beobachtungen aus der im Rahmen der Bachelorarbeit implementierten Vorgängerversion \cite{heimbrodt2025bluefield}. Dabei zeigte sich, dass bei einem filterbasierten Mechanismus, der als Eingabe ein Bitfeld (also eine binäre Repräsentation) verwendet, in der Regel eine Anzahl von Filtern erforderlich ist, die einer Potenz von zwei entspricht.
+
+In Zeile~22 wird schließlich über die Funktion \texttt{configAddBackend()} das neue Backend in die XenoFlow-Konfiguration aufgenommen. Dies stellt sicher, dass alle aktiven Backends in einer zentralen Datenstruktur gesammelt werden. Dadurch wird sowohl das spätere Entfernen von Backends ermöglicht als auch eine Schnittstelle für ein potenzielles Frontend bzw. eine REST-API bereitgestellt.
+
+Als HTTP-Server kommt im Projekt \textit{Micro HTTPD} zum Einsatz. Diese Bibliothek ist bewusst sehr leichtgewichtig gehalten und ermöglicht die schnelle Bereitstellung eines HTTP-Servers, ohne große Teile des HTTP-Standards selbst implementieren zu müssen.
 \begin{minted}[linenos]{c}
 int http_server_start(int port, XenoFlowConfig *config) {
     http_server_ctx = malloc(sizeof(struct http_server_ctx));    
@@ -403,23 +480,24 @@ int http_server_start(int port, XenoFlowConfig *config) {
         MHD_OPTION_END
     );
     // ... 
-    DOCA_LOG_INFO("HTTP server started on port %d", http_server_ctx->port);
-    return 0;
 }
 \end{minted}
-In Zeile 5 wird der entsprechende Micro-HTTPD-Daemon gestartet und erhält als Callback-Funktion den entsprechenden Handler, in dem die eigentliche Verarbeitung stattfindet (Zeile 9). Die REST-API ermöglicht folgende Operationen:
-\begin{itemize}
-    \item GET gegen \texttt{/api-Pfad}: Gibt ein JSON zurück, das alle aktiven Backends enthält.
-     \item POST gegen \texttt{/api}-Pfad: Erwartet eine Menge neuer Backends, die dem Loadbalancer hinzugefügt werden sollen.
-\end{itemize}
-Genauere Beispiele zum Format der JSON-Formatierung können im XenoFlow-Repository nachgelesen werden \cite{heimbrodt2025xenoflow}. Zum Parsen und Erstellen von JSON-Dateien wurde die Abhängigkeit \texttt{cJSON} dem Projekt hinzugefügt.
+In Zeile~5 wird der Micro-HTTPD-Daemon gestartet, dem eine Callback-Funktion übergeben wird, in der die eigentliche Verarbeitung erfolgt (Zeile~9). Die REST-API stellt dabei folgende Operationen bereit:
 
-% weiter elaborieren was vollständig heißt
-Die vorliegende Implementierung ermöglicht nun das Hinzufügen von Backends über die REST-API, ohne dass es zu Paketverlusten kommt. Das wird von Nvidia laut der eigenen Dokumentation garantiert. Damit rückt XenoFlow einem produktionsreifen System in signifikanter Weise näher. Die Funktionsweise des Hinzufügens von Backends wurde mittels einer eigenen Testumgebung überprüft. Das entsprechende Python Skript liegt ebenfalls im Projekt Repository vor.
+\begin{itemize}
+\item GET auf \texttt{/api}: Liefert ein JSON-Objekt zurück, das alle aktuell aktiven Backends enthält.
+\item POST auf \texttt{/api}: Erwartet eine Menge neuer Backends, die dem Loadbalancer hinzugefügt werden sollen.
+\end{itemize}
+
+Genauere Beispiele zum JSON-Format sind im XenoFlow-Repository dokumentiert \cite{heimbrodt2025xenoflow}. Für das Parsen und die Generierung von JSON-Daten wird die Bibliothek \texttt{cJSON} als externe Abhängigkeit verwendet.
 \section{Sonstiges}
-Zusätzlich zu den vorherigen Experimenten wurden weitere Features zum Loadbalancer und DOCA Flow allgemein hinzugefügt. Der Hintergrund war einerseits, Comfort-Features zu schaffen, die einer produktiven Nutzung helfen sollten, und andererseits, empfundene technische Lücken seitens Nvidia zu schließen.
+Zusätzlich zu den zuvor beschriebenen Experimenten wurden weitere Funktionen für den Loadbalancer sowie für DOCA Flow selbst implementiert. Ziel war es einerseits, Komfortfunktionen bereitzustellen, die eine produktive Nutzung erleichtern, und andererseits identifizierte funktionale Einschränkungen seitens Nvidia zu adressieren.
 \subsection{PyDFlow}
-PyDFlow ist eine Python-Abstraktionsschicht, die es ermöglichen soll, Anwendungen für DOCA Flow und somit die BlueField in Python deutlich vereinfacht zu implementieren \cite{heimbrodt2025pydflow}. Ziel ist es, die Plattform auch für weniger komplexe Projekte sowie die Forschung attraktiver zu machen und technische Hürden zu verringern. Außerdem ist DOCA Flow aufgrund der Natur der C implementierung extrem verbose und neigt dazu, in sehr langem Programmcode für eigentlich simple Aufgaben zu münden. Daher soll PyDFlow die Möglichkeit bieten, schnelle Prototypen und forschungsorientierte Anwendungen für die BlueField-Flow-Plattform zu entwickeln. Das Projekt ist in C++ implementiert und verwendet das \textit{pybind11-Framework} \cite{jakob2015pybind11} zur Erstellung der Python bindings.
+PyDFlow ist eine Python-Abstraktionsschicht, die die Entwicklung von Anwendungen für DOCA Flow und damit für die BlueField-Plattform in Python deutlich vereinfacht \cite{heimbrodt2025pydflow}. Ziel ist es, die Plattform sowohl für weniger komplexe Anwendungsfälle als auch für Forschungszwecke zugänglicher zu machen und technische Einstiegshürden zu reduzieren.
+
+Darüber hinaus ist die native DOCA-Flow-API aufgrund ihrer C-basierten Implementierung vergleichsweise umfangreich und führt selbst bei einfachen Aufgaben häufig zu sehr ausführlichem Programmcode. PyDFlow adressiert dieses Problem, indem es eine kompaktere Schnittstelle bereitstellt, die insbesondere die schnelle Entwicklung von Prototypen und forschungsorientierten Anwendungen für die BlueField-Flow-Plattform ermöglicht.
+
+Das Projekt ist in C++ implementiert und verwendet das \textit{pybind11}-Framework \cite{jakob2015pybind11} zur Erstellung der Python-Bindings.
 \begin{minted}[linenos]{python}
 import pydflow
 
@@ -432,9 +510,11 @@ pipe.create_entry()
 print(len(pipe.get_entries()))
 print(pipe.get_entries())
 \end{minted}
-Zeile 1 zeigt, dass \texttt{pydflow} als ein C-Shared-Object gebaut wird und somit, dank der Fähigkeit von Python, C-Bibliotheken nahtlos einbinden zu können, als normale Python-Bibliothek importiert werden kann. In Zeile 5 wird die Umgebung von \texttt{PyDFlow} initialisiert und der Konstruktor erhält als Argumente einen Namen sowie die beiden PCIe-Adressen, auf denen die entsprechenden Pipes angelegt werden sollen.
-In der nächsten Zeile und folgend (Zeilen 6-7) wird dann eine Pipe erstellt, der ein leeres Entry hinzugefügt wird.
-Abschließend wird in den Zeilen 9 und 10 gezeigt, dass die erstellten Objekte vollständig in Python implementiert sind und spezifische Funktionen wie \texttt{len()} darauf ausgeführt werden können.
+Zeile~1 zeigt, dass \texttt{pydflow} als C-Shared-Object kompiliert wird und damit aufgrund der Möglichkeit von Python, C-Bibliotheken direkt einzubinden, als reguläres Python-Modul importiert werden kann. In Zeile~5 wird die PyDFlow-Umgebung initialisiert. Der Konstruktor erhält dabei einen Namen sowie die beiden PCIe-Adressen, auf denen die entsprechenden Pipes angelegt werden sollen.
+
+In den folgenden Zeilen (Zeilen~6--7) wird eine Pipe erstellt, der anschließend ein initialer, leerer Entry hinzugefügt wird.
+
+Abschließend zeigen die Zeilen~9 und~10, dass die erzeugten Objekte vollständig in Python repräsentiert sind und somit auch eingebaute Funktionen wie \texttt{len()} unterstützt werden können.
 \subsection{Dashboard}
 Da es nun üblich ist, alle webbezogenen Projekte auch mit einem Dashboard-Frontend auszustatten, wurde auch XenoFlow mit einem solchen Frontend ausgestattet. Dort können verschiedene Metrikwerte der entsprechenden Anwendung eingesehen werden.
 
@@ -460,7 +540,15 @@ Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Pro
 % Besser erklären wie Bucket und Backend Mappen vor allem im Bezug auf 7.1
 % RSS Target einführen und Forwarding auf Flow beziehen
 % Maglev einführen um auf Bucket hashing einzugehen
-Das wohl größte fehlende Feature für XenoFlow wäre eine Per-Connection-Consistency. Dazu wäre es möglich, die Bucket Semantik von Katran nachzimplementieren. Die Idee ist es, zu ermöglichen, dass eine Anzahl von Backends, die nicht einer Zweierpotenz entspricht, abgebildet werden kann. Dabei wird, anstatt dass jedes Entry direkt auf ein Backend zeigt, eine feste Anzahl von Entries erstellt (Buckets). Die eigentliche Zuordnung, welches Bucket auf welches Backend zeigt, bleibt dann dem Programm überlassen. Dies ermöglicht es beispielsweise, einen 8 Bucket Zustand auch mit 3 Backends zu unterstützen (siehe Abbildung 7.1). Entscheidend sind jetzt hierbei die Backends, die noch eine laufende Stateful Verbindung mit einem Client geöffnet hatten. Dieser Traffic würde nach dem hinzufügen eines neuen Backends nicht mehr beim ursprünglichen Backend ankommen, da die entsprechenden Entries ja nun auf ein anderes Backend zeigen. Ein möglicher Weg, dies zu umgehen, wäre, den Traffic vorerst auf einen der ARM-Kerne mittels eines Forwarding an das RSS-Target zu schicken. Auf dem ARM Host werden dann entsprechend die laufenden Verbindungen explizit behandelt und mitgeschnitten. Nach einer gewissen Zeit wird ein Cut gemacht und die expliziten Verbindungen werden in einer Exception Pipe als expliziter Match hinzugefügt. Alle neuen Verbindungen werden von dieser Behandlung ausgenommen und werden direkt als klassische Verbindungen gehandhabt. Wichtig ist, dass der besagte Prozess abgeschlossen werden muss, bevor neue Backends hinzugefügt werden können. Einen ähnlichen Ansatz verfolgen wir im kommenden VeloxFlow \cite{schnoer2026veloxflow}. Dieser beschreibt einen Loadbalancer, der die QUIC Semantik unterstützt und zusätzlich die PCC für TCP implementieren soll.
+Das möglicherweise wichtigste fehlende Feature für XenoFlow ist Per-Connection-Consistency. Eine mögliche Realisierung wäre die Nachbildung der Bucket-Semantik von Katran. Ziel dieser Semantik ist es, eine Abbildung auch dann zu ermöglichen, wenn die Anzahl der Backends keine Zweierpotenz darstellt.
+
+Dabei wird nicht jeder Entry direkt einem Backend zugeordnet. Stattdessen wird eine feste Anzahl an Entries in Form von Buckets erstellt. Die Zuordnung der Buckets zu den jeweiligen Backends erfolgt anschließend durch die Applikationslogik. Dadurch ist es beispielsweise möglich, einen Zustand mit acht Buckets auf drei Backends abzubilden (siehe Abbildung~7.1).
+
+Zentral ist hierbei die Behandlung von Backends, die bereits bestehende zustandsbehaftete (stateful) Verbindungen zu Clients besitzen. Nach dem Hinzufügen eines neuen Backends würde dieser Traffic andernfalls nicht mehr konsistent beim ursprünglichen Backend ankommen, da die entsprechenden Entries nun auf andere Backends zeigen können.
+
+Ein möglicher Ansatz zur Lösung dieses Problems besteht darin, den Traffic zunächst über einen der ARM-Kerne mittels eines Forwardings an das RSS-Target zu leiten. Auf dem ARM-Host werden anschließend bestehende Verbindungen explizit erfasst und verarbeitet. Nach einer definierten Übergangsphase wird ein Cut durchgeführt, und die bestehenden Verbindungen werden als explizite Matches in einer Exception-Pipe hinterlegt. Neue Verbindungen sind von dieser Behandlung ausgenommen und werden direkt als reguläre Verbindungen verarbeitet.
+
+Wichtig ist dabei, dass dieser Prozess abgeschlossen sein muss, bevor neue Backends hinzugefügt werden können. Einen ähnlichen Ansatz verfolgt das im Rahmen der Weiterentwicklung geplante VeloxFlow \cite{schnoer2026veloxflow}, das einen Loadbalancer beschreibt, der QUIC-Semantik unterstützt und zusätzlich PCC für TCP implementieren soll.
 
 
 \newpage

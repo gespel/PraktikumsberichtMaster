@@ -7,7 +7,7 @@
 \usepackage{amsmath,amsfonts,amsthm} % Math packages
 
 \usepackage{lipsum} % Used for inserting dummy 'Lorem ipsum' text into the template
-
+\usepackage[htt]{hyphenat}
 \usepackage{sectsty} % Allows customizing section commands
 \allsectionsfont{\centering \normalfont\scshape} % Make all sections centered, the default font and small caps
 \usepackage{minted}
@@ -342,7 +342,7 @@ doca_error_t doca_flow_pipe_remove_entry(
     struct doca_flow_pipe_entry *entry
 );
 \end{minted}
-Die \texttt{doca\_flow\_remove\_entry()} ist allerdings neu und erlaubt unter der Angabe der Pipe-Queue und des Entry auch analog zum Hinzufügen das Löschen eines Entries aus einer Pipe.
+Die \texttt{doca\_flow\_remove\_entry()} ist allerdings neu und erlaubt unter der Angabe der Pipe-Queue und des Entry, analog zum Hinzufügen, auch das Löschen eines Entries aus einer Pipe.
 \subsubsection*{Ergebnisse}
 \begin{figure}
     \centering
@@ -351,49 +351,77 @@ Die \texttt{doca\_flow\_remove\_entry()} ist allerdings neu und erlaubt unter de
     \label{fig:placeholder}
 \end{figure}
 % Cite einfügen und begründen das größenordnung stimmt und angeben dass es eine BLueField 2 war.
-Wie in der Abbildung 4.2 zu sehen ist, liegen die meisten Werte zwischen 150 und 250 $\mu s$. Der errechnete Median liegt bei \textbf{$249.8 \mu s$}. Die ausreißenden Minimalwerte sind wahrscheinlich dem Jitter der Hardware-Uhr auf Seiten der BlueField aufgrund der relativ kleinen Anzahl der Ausreißer zuzuordnen. Die hohen Maximalwerte können vernachlässigt werden, da sie durch den zufälligen Delay zustande kommen. Grundsätzlich wurde diesen gemessenen Werten innerhalb der Arbeitsgruppe glauben geschenkt, da sie sich mit der Veröffentlichung der Laconic-Gruppe deckten beziehungsweise in derselben Größenordnung lagen. Die Laconic-Arbeitsgruppe ermittelte einen Wert von $302 \mu s$ \cite{cui2024laconic}. Es sei allerdings erwähnt, dass sie einerseits auf der Bluefield-2 gemessen haben und andererseits bei dem Median aus diesem Projekt hier die Netzwerklatenz nicht abgezogen bzw. berücksichtigt wurde.
+Wie in der Abbildung 4.2 zu sehen ist, liegen die meisten Werte zwischen 150 und 250 $\mu s$. Der errechnete Median liegt bei \textbf{$249.8 \mu s$}. Die ausreißenden Minimalwerte sind wahrscheinlich dem Jitter der Hardware-Uhr auf Seiten der BlueField aufgrund der relativ kleinen Anzahl an Ausreißern zuzuordnen. Die hohen Maximalwerte können vernachlässigt werden, da sie durch den zufälligen Delay zustande kommen. Grundsätzlich wurde diesen gemessenen Werten innerhalb der Arbeitsgruppe glauben geschenkt, da sie sich mit der Veröffentlichung der Laconic-Gruppe deckten beziehungsweise in derselben Größenordnung lagen. Die Laconic-Arbeitsgruppe ermittelte einen Wert von $302 \mu s$ \cite{cui2024laconic}. Es sei allerdings erwähnt, dass sie einerseits auf der Bluefield-2 gemessen haben und andererseits bei dem Median aus diesem Projekt hier die Netzwerklatenz nicht abgezogen bzw. berücksichtigt wurde.
 \section{Neuerungen in XenoFlow 1.0}
 %\subsection{hash\_pipe}
 % Siehe Doku einfügen
-Die Hash Pipe ist eine der größten Neuerungen und somit auch eines der Kernarbeitsziele dieses Projekts gewesen. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie es, einen implizit ausgeführten Hashing Algorithmus auf die Netzwerkpakete anzuwenden. Somit werden die Pakete gleichmäßig auf die entsprechenden Entries verteilt. Außerdem wurde in diesem Zug auch die Möglichkeit implementiert, dynamisch zur Laufzeit Backends hinzuzufügen und zu löschen. Dadurch ist eine genauere Anpassung des Loadbalancers in einer realen Einsatzsituation möglich, da bisher eine Änderung der Backends einen Neustart des Programms erfordern würde. Da dies mit entsprechendem Paketverlust einhergehen würde, war dieses Feature zu beginn des Praktikums im Fokus. Die Backends werden mittels einer REST-API auf dem Port 8080 hinzugefügt. Es kann mit jedem API-Call jeweils eine gerade Anzahl von Backends hinzugefügt werden, sodass die neue Anzahl an Backends wieder einer 2er Potenz entspricht. Im folgenden Code ist die entsprechende Funktion zum dynamischen hinzufügen eines Backends gegeben. Es sei dazu erwähnt, dass es sich um eine stark gekürzte Variante handelt. Die vollständige Version ist im Projekt Github-Repository einzusehen. Die entscheidenden aufgerufenen intrinsischen Funktionen sind hierbei:
+Die Einführung der Hash Pipe ist eine der größten Neuerungen und somit auch eines der Kernarbeitsziele dieses Projekts gewesen. Wie in Abschnitt 2.1.2 beschrieben, ermöglicht sie es, einen implizit ausgeführten Hashing Algorithmus auf die Netzwerkpakete anzuwenden. Implizit deshalb, da nicht explizit angegeben werden muss, wie der Hashing Algorithmus aufgebaut ist. Somit werden die Pakete gleichmäßig auf die entsprechenden Entries verteilt. 
+
+Außerdem wurde in diesem Zug auch die Möglichkeit implementiert, dynamisch zur Laufzeit Backends hinzuzufügen und zu löschen. Dadurch ist eine genauere Anpassung des Loadbalancers in einer realen Einsatzsituation möglich, da bisher eine Änderung der Backends einen Neustart des Programms erfordern würde. Da dies mit entsprechendem Paketverlust einhergehen würde, war dieses Feature zu beginn des Praktikums im Fokus. Die Backends werden mittels einer REST-API auf dem Port 8080 hinzugefügt. Es kann mit jedem API-Call jeweils eine Anzahl von Backends hinzugefügt werden, sodass die neue Anzahl an Backends wieder einer Potenz von 2 entspricht. Im folgenden Code ist die entsprechende Funktion zum dynamischen hinzufügen eines Backends gegeben. Es sei dazu erwähnt, dass es sich um eine stark gekürzte Variante handelt. Die vollständige Version ist im Projekt Github-Repository einzusehen. Die entscheidenden aufgerufenen intrinsischen Funktionen sind hierbei:
 \begin{itemize}
     \item \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zum Erstellen des Entry, explizit in einer Hash-Pipe.
     \item \texttt{doca\_flow\_entries\_process()} ruft die Prozessierung in der Runtime auf (siehe 4.3).
 \end{itemize}
 \begin{minted}[linenos]{c}
 doca_error_t xenoflow_add_backend(XenoFlow *xeno, char *name, char *mac) {
-	int entry_index = xeno->config->numBackends;
-
-	XenoFlowBackend *new_backend = createBackend(name, mac);
-	doca_error_t result;
-
-	SET_MAC_ADDR(actions.outer.eth.dst_mac,
-            new_backend->mac_address[0], 
-            new_backend->mac_address[1], 
-            new_backend->mac_address[2],
-            new_backend->mac_address[3], 
-            new_backend->mac_address[4], 
-            new_backend->mac_address[5]
-        );
-
-	fwd.type = DOCA_FLOW_FWD_PORT;
-	fwd.port_id = 0;
-
-        doca_flow_pipe_hash_add_entry(/* Entry Argumente */);
-        doca_flow_entries_process(/* Entry Process Argumente */);
-
-	configAddBackend(xeno->config, new_backend);
+    int entry_index = xeno->config->numBackends;
+    
+    XenoFlowBackend *new_backend = createBackend(name, mac);
+    doca_error_t result;
+    
+    SET_MAC_ADDR(actions.outer.eth.dst_mac,
+        new_backend->mac_address[0], 
+        new_backend->mac_address[1], 
+        new_backend->mac_address[2],
+        new_backend->mac_address[3], 
+        new_backend->mac_address[4], 
+        new_backend->mac_address[5]
+    );
+    
+    fwd.type = DOCA_FLOW_FWD_PORT;
+    fwd.port_id = 0;
+    
+    doca_flow_pipe_hash_add_entry(/* Entry Argumente */);
+    doca_flow_entries_process(/* Entry Process Argumente */);
+    
+    configAddBackend(xeno->config, new_backend);
 }
 \end{minted}
+Interessant ist hierbei die Zeile 19, da in dieser die intrinsische Funktion \texttt{doca\_flow\_pipe\_hash\_add\_entry()} verwendet wird. Es ist also nicht möglich, Entries mittels der vorherigen \texttt{doca\_flow\_pipe\_add\_entry()} in einer Hash-Pipe hinzuzufügen. Der Hintergrund ist vermutlich, dass beim Aufruf von \texttt{doca\_flow\_pipe\_hash\_add\_entry()} zusätzliche Funktionen aufgerufen werden müssen, um die entsprechenden Match-Masken neu aufzubauen. Diese Vermutung ist entstanden, da im Rahmen der Bachelorarbeit dieser Mechanismus selbst implementiert wurde und dadurch auffiel, dass bei einem Filtermechanismus, der als Eingabe \cite{heimbrodt2025bluefield} ein Bitfeld, also eine binäre Zahl, erhält, fast immer eine Anzahl von Filtern erstellt werden muss, die einer Potenz von 2 entspricht. Zuletzt wird in Zeile 22 der XenoFlow Konfiguration das neue Backend mittels \texttt{configAddBackend()} hinzugefügt. Dies geschieht, damit einerseits alle angelegten Backends in einer Datenstruktur gesammelt werden und somit beispielsweise auch Backends gelöscht werden können, aber auch, um eine Schnittstelle mit einem eventuellen Frontend/REST-API herstellen zu können.
+
+Als HTTP-Server wurde im Projekt \textit{Micro HTTPD} verwendet. Diese Bibliothek ist extrem leichtgewichtig und ermöglicht es, schnell HTTP-Server aufzubauen, ohne große Teile des HTTP-Standards reimplementieren zu müssen.
+\begin{minted}[linenos]{c}
+int http_server_start(int port, XenoFlowConfig *config) {
+    http_server_ctx = malloc(sizeof(struct http_server_ctx));    
+    http_server_ctx->port = port;
+    http_server_ctx->config = config;
+    http_server_ctx->daemon = MHD_start_daemon(
+        MHD_USE_SELECT_INTERNALLY,
+        http_server_ctx->port,
+        NULL, NULL,
+        &http_request_handler, NULL,
+        MHD_OPTION_END
+    );
+    // ... 
+    DOCA_LOG_INFO("HTTP server started on port %d", http_server_ctx->port);
+    return 0;
+}
+\end{minted}
+In Zeile 5 wird der entsprechende Micro-HTTPD-Daemon gestartet und erhält als Callback-Funktion den entsprechenden Handler, in dem die eigentliche Verarbeitung stattfindet (Zeile 9). Die REST-API ermöglicht folgende Operationen:
+\begin{itemize}
+    \item GET gegen \texttt{/api-Pfad}: Gibt ein JSON zurück, das alle aktiven Backends enthält.
+     \item POST gegen \texttt{/api}-Pfad: Erwartet eine Menge neuer Backends, die dem Loadbalancer hinzugefügt werden sollen.
+\end{itemize}
+Genauere Beispiele zum Format der JSON-Formatierung können im XenoFlow-Repository nachgelesen werden \cite{heimbrodt2025xenoflow}. Zum Parsen und Erstellen von JSON-Dateien wurde die Abhängigkeit \texttt{cJSON} dem Projekt hinzugefügt.
+
 % weiter elaborieren was vollständig heißt
-Die vorliegende Implementierung ermöglicht nun das vollständige Hinzufügen von Backends, ohne dass es zu Paketverlusten kommt. Damit rückt XenoFlow einem produktionsreifen Systementwurf in signifikanter Weise näher. Die Funktionsweise wurde mittels einer eigenen Testumgebung überprüft. Das entsprechende Python Skript liegt ebenfalls im Projekt Repository vor.
+Die vorliegende Implementierung ermöglicht nun das Hinzufügen von Backends über die REST-API, ohne dass es zu Paketverlusten kommt. Das wird von Nvidia laut der eigenen Dokumentation garantiert. Damit rückt XenoFlow einem produktionsreifen System in signifikanter Weise näher. Die Funktionsweise des Hinzufügens von Backends wurde mittels einer eigenen Testumgebung überprüft. Das entsprechende Python Skript liegt ebenfalls im Projekt Repository vor.
 \section{Sonstiges}
-Zusätzlich zu den vorherigen Experimenten wurden weitere Features zum Loadbalancer und DOCA Flow allgemein hinzugefügt. Hintergrund war es einerseits, Comfort-Features zu schaffen, die einer produktiven Nutzung helfen sollten, und andererseits, empfundene technische Lücken seitens Nvidia zu schließen.
+Zusätzlich zu den vorherigen Experimenten wurden weitere Features zum Loadbalancer und DOCA Flow allgemein hinzugefügt. Der Hintergrund war einerseits, Comfort-Features zu schaffen, die einer produktiven Nutzung helfen sollten, und andererseits, empfundene technische Lücken seitens Nvidia zu schließen.
 \subsection{PyDFlow}
-PyDFlow ist eine Python-Abstraktionsschicht, die es ermöglichen soll, deutlich vereinfacht Anwendungen für DOCA Flow und somit die BlueField in Python zu implementieren \cite{heimbrodt2025pydflow}. Ziel ist es, die Plattform auch für weniger komplexe Projekte sowie die Forschung attraktiver zu machen und technische Hürden zu verringern. Außerdem ist DOCA Flow aufgrund der Natur der C implementierung extrem verbose und neigt dazu, in sehr langem Programmcode für eigentlich simple Aufgaben zu münden. Daher soll PyDFlow die Möglichkeit bieten, schnelle Prototypen und forschungsorientierte Anwendungen für die BlueField-Flow-Plattform zu entwickeln. Das Projekt ist in C++ implementiert und verwendet das \textit{pybind11-Framework} \cite{jakob2015pybind11} zur Erstellung der Python bindings.
+PyDFlow ist eine Python-Abstraktionsschicht, die es ermöglichen soll, Anwendungen für DOCA Flow und somit die BlueField in Python deutlich vereinfacht zu implementieren \cite{heimbrodt2025pydflow}. Ziel ist es, die Plattform auch für weniger komplexe Projekte sowie die Forschung attraktiver zu machen und technische Hürden zu verringern. Außerdem ist DOCA Flow aufgrund der Natur der C implementierung extrem verbose und neigt dazu, in sehr langem Programmcode für eigentlich simple Aufgaben zu münden. Daher soll PyDFlow die Möglichkeit bieten, schnelle Prototypen und forschungsorientierte Anwendungen für die BlueField-Flow-Plattform zu entwickeln. Das Projekt ist in C++ implementiert und verwendet das \textit{pybind11-Framework} \cite{jakob2015pybind11} zur Erstellung der Python bindings.
 \begin{minted}[linenos]{python}
 import pydflow
-import time
 
 # Creating a DOCA Flow Pipe with the name test 
 # and the PCIe addresses of Port 0 and Port 1 of the Bluefield
@@ -404,8 +432,13 @@ pipe.create_entry()
 print(len(pipe.get_entries()))
 print(pipe.get_entries())
 \end{minted}
+Zeile 1 zeigt, dass \texttt{pydflow} als ein C-Shared-Object gebaut wird und somit, dank der Fähigkeit von Python, C-Bibliotheken nahtlos einbinden zu können, als normale Python-Bibliothek importiert werden kann. In Zeile 5 wird die Umgebung von \texttt{PyDFlow} initialisiert und der Konstruktor erhält als Argumente einen Namen sowie die beiden PCIe-Adressen, auf denen die entsprechenden Pipes angelegt werden sollen.
+In der nächsten Zeile und folgend (Zeilen 6-7) wird dann eine Pipe erstellt, der ein leeres Entry hinzugefügt wird.
+Abschließend wird in den Zeilen 9 und 10 gezeigt, dass die erstellten Objekte vollständig in Python implementiert sind und spezifische Funktionen wie \texttt{len()} darauf ausgeführt werden können.
 \subsection{Dashboard}
-Aktuell ist es Trend, Metriken statt, wie früher üblich, über eine Kommandozeile einzusehen, sich als eine gerenderte Webseite anzeigen zu lassen. So besitzen viele Projekte, wie beispielsweise Kubernetes, Grafana und gcloud, solche Webfrontends. Dort können verschiedene Metrikwerte der entsprechenden Anwendung eingesehen werden. Um mit dieser Entwicklung Schritt zu halten und da der Zielanwendungsbereich bei den klassischen Cloud-Providern liegt, wurde im Rahmen dieses Projekts zusätzlich ein Webfrontend implementiert. Das Frontend wird als ein Python-Flask-Server gestartet, der in regelmäßigen Abständen mit dem Backend von XenoFlow kommuniziert, um den aktuellen Zustand auszulesen. Auf Abbildung 5.1 ist das Design des entsprechenden Frontends zu sehen.
+Da es nun üblich ist, alle webbezogenen Projekte auch mit einem Dashboard-Frontend auszustatten, wurde auch XenoFlow mit einem solchen Frontend ausgestattet. Dort können verschiedene Metrikwerte der entsprechenden Anwendung eingesehen werden.
+
+Das Frontend wird als ein Python-Flask-Server gestartet, der in regelmäßigen Abständen mit dem Backend von XenoFlow kommuniziert, um den aktuellen Zustand auszulesen. Auf Abbildung 6.1 ist das Design des entsprechenden Frontends zu sehen. Dabei fragt %Python Json bla
 % Zeitachse anfügen
 \begin{figure}
     \centering

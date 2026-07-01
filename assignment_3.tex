@@ -528,7 +528,13 @@ Das Frontend wird als ein Python-Flask-Server gestartet, der in regelmäßigen A
 \end{figure}
 \section{Fazit}
 % klareren Pfad zur 1.0 erläutern. Version 1.0 klar einführen (Einleitung)
-Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Prototypen ein gutes Stück weiter in die Richtung eines vollständigen Releases gebracht. Es konnten Erweiterungen für einen weiter ausgebauten, produktionsreifen Loadbalancer implementiert werden. So ist es nun in der Version 1.0 möglich, dynamisch zur Laufzeit neue Backends hinzuzufügen, die dann im Anschluss aktiv werden. Außerdem wurde der allgemeine Code wesentlich eingekürzt, da nun statt einer Filterfunktion und der entsprechenden Maskenberechnung einfach die DOCA Flow intrinsische Funktion aufgerufen wird. Dadurch ist keine Laufzeitsteigerung messbar, womit es sich um eine zero-cost-Erweiterung handelt. Damit ist nun das Projekt XenoFlow weitestgehend beendet. XenoFlow verbleibt als dynamisch konfigurierbarer L3 Loadbalancer. Es muss beim hinzufügen von Backends beachtet werden, dass stateful-TCP-Verbindungen korrekt wiederhergestellt werden müssen. Dies liegt dann allerdings nicht mehr in der obhut des Loadbalancers, sondern muss auf Applikationsebene gelöst werden. Abschließend lässt sich jedoch sagen, dass die technischen Gegebenheiten von ca. 4 Millionen Einträgen ($505 \text{ Pipes} \cdot 8192 \text{ Entries}$) und relativ geringen Entry-Einfüge-Latenzen von $249 \mu s$ eine gute Architektonische Grundlage für hardwarebeschleunigte Netzwerkpipelines bieten. \cite{heimbrodt2025bluefield}
+Im Rahmen dieser Projektarbeit wurde XenoFlow ausgehend vom ursprünglichen Prototypen deutlich in Richtung eines vollständigen Releases weiterentwickelt. Dabei konnten wesentliche Erweiterungen implementiert werden, die den Einsatz als produktionsnahen Loadbalancer ermöglichen. So unterstützt Version~1.0 erstmals das dynamische Hinzufügen neuer Backends zur Laufzeit, die unmittelbar nach ihrer Konfiguration für die Lastverteilung zur Verfügung stehen.
+
+Darüber hinaus konnte der Implementierungsaufwand des Projekts deutlich reduziert werden. Anstelle einer selbst implementierten Filterfunktion einschließlich der zugehörigen Maskenberechnung wird nun die entsprechende intrinsische Funktion von DOCA Flow verwendet. Hierdurch ergibt sich keine messbare Veränderung der Laufzeit, sodass die Umstellung als Zero-Cost-Abstraktion betrachtet werden kann.
+
+Damit ist die Entwicklung von XenoFlow als dynamisch konfigurierbarer L3-Loadbalancer weitgehend abgeschlossen. Beim Hinzufügen neuer Backends muss jedoch weiterhin berücksichtigt werden, dass bestehende zustandsbehaftete TCP-Verbindungen konsistent behandelt werden. Die Gewährleistung dieser Per-Connection-Consistency liegt dabei nicht in der Verantwortung des Loadbalancers selbst, sondern muss auf Applikationsebene erfolgen.
+
+Zusammenfassend zeigen die im Rahmen dieser Arbeit ermittelten technischen Eigenschaften der BlueField-3, insbesondere die Unterstützung von etwa vier Millionen Einträgen ($505 \text{ Pipes} \cdot 8192 \text{ Entries}$) sowie die vergleichsweise geringe Entry-Einfügelatenz von $249,\mu s$, dass die Plattform eine leistungsfähige Grundlage für hardwarebeschleunigte Netzwerkpipelines bietet. \cite{heimbrodt2025bluefield}
 \section{Ausblick}
 \begin{figure}
     \centering
@@ -540,9 +546,9 @@ Im Rahmen der Projektarbeit wurde XenoFlow vom ursprünglichen Zustand eines Pro
 % Besser erklären wie Bucket und Backend Mappen vor allem im Bezug auf 7.1
 % RSS Target einführen und Forwarding auf Flow beziehen
 % Maglev einführen um auf Bucket hashing einzugehen
-Das möglicherweise wichtigste fehlende Feature für XenoFlow ist Per-Connection-Consistency. Eine mögliche Realisierung wäre die Nachbildung der Bucket-Semantik von Katran. Ziel dieser Semantik ist es, eine Abbildung auch dann zu ermöglichen, wenn die Anzahl der Backends keine Zweierpotenz darstellt.
+Das möglicherweise wichtigste fehlende Feature für XenoFlow ist Per-Connection-Consistency. Eine mögliche Realisierung wäre die Nachbildung der Bucket-Semantik von Katran. Ziel dieser Semantik ist es, die Funktion von XenoFLow auch dann zu ermöglichen, wenn die Anzahl der Backends keine Zweierpotenz darstellt.
 
-Dabei wird nicht jeder Entry direkt einem Backend zugeordnet. Stattdessen wird eine feste Anzahl an Entries in Form von Buckets erstellt. Die Zuordnung der Buckets zu den jeweiligen Backends erfolgt anschließend durch die Applikationslogik. Dadurch ist es beispielsweise möglich, einen Zustand mit acht Buckets auf drei Backends abzubilden (siehe Abbildung~7.1).
+Dabei wird nicht jedes Entry direkt einem Backend zugeordnet. Stattdessen wird eine feste Anzahl an Entries in Form von Buckets erstellt. Die Zuordnung der Buckets zu den jeweiligen Backends erfolgt anschließend durch die Applikationslogik. Dadurch ist es beispielsweise möglich, einen Zustand mit vier Buckets auf drei Backends abzubilden (siehe Abbildung~8.1).
 
 Zentral ist hierbei die Behandlung von Backends, die bereits bestehende zustandsbehaftete (stateful) Verbindungen zu Clients besitzen. Nach dem Hinzufügen eines neuen Backends würde dieser Traffic andernfalls nicht mehr konsistent beim ursprünglichen Backend ankommen, da die entsprechenden Entries nun auf andere Backends zeigen können.
 
